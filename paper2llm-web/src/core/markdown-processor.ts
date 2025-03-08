@@ -47,7 +47,7 @@ export class MarkdownProcessor {
 
         // Add page number as heading if configured
         if (options.addPageNumbers) {
-          markdownParts.push(`## Page ${page.index + 1}\n\n`);
+          markdownParts.push(`#### Page ${page.index + 1}\n\n`);
         }
 
         // Remove double line breaks if configured
@@ -94,14 +94,21 @@ export class MarkdownProcessor {
       // If no image descriptions provided, return original markdown
       if (!imageDescriptions || imageDescriptions.size === 0) {
         if (options.debugMode) {
-          console.log('No image descriptions provided, returning original markdown');
+          console.log(
+            "No image descriptions provided, returning original markdown"
+          );
         }
         return markdown;
       }
 
       if (options.debugMode) {
-        console.log(`Enhancing markdown with ${imageDescriptions.size} image descriptions`);
-        console.log('Image IDs available:', Array.from(imageDescriptions.keys()));
+        console.log(
+          `Enhancing markdown with ${imageDescriptions.size} image descriptions`
+        );
+        console.log(
+          "Image IDs available:",
+          Array.from(imageDescriptions.keys())
+        );
       }
 
       let enhancedMarkdown = markdown;
@@ -126,7 +133,9 @@ export class MarkdownProcessor {
       if (options.debugMode) {
         console.log(`Found ${matches.length} image references in markdown`);
         matches.forEach((m, i) => {
-          console.log(`Image ${i+1}: ${m.full} (alt: "${m.alt}", src: "${m.src}")`);
+          console.log(
+            `Image ${i + 1}: ${m.full} (alt: "${m.alt}", src: "${m.src}")`
+          );
         });
       }
 
@@ -135,27 +144,30 @@ export class MarkdownProcessor {
         // Extract the image ID from the source - handle various formats
         // Remove any path prefixes, query params, and decode URI components to match raw ID
         let imageId = match.src;
-        
+
         // Strip any path prefixes
-        imageId = imageId.split('/').pop() || imageId;
-        
+        imageId = imageId.split("/").pop() || imageId;
+
         // Remove query params if any
-        imageId = imageId.split('?')[0];
-        
+        imageId = imageId.split("?")[0];
+
         // Try direct match first
         let description = imageDescriptions.get(imageId);
-        
+
         // If no match, try to find by partial matching (case-insensitive comparison)
         if (!description) {
           const potentialMatches = Array.from(imageDescriptions.keys()).filter(
-            key => key.toLowerCase().includes(imageId.toLowerCase()) || 
-                  imageId.toLowerCase().includes(key.toLowerCase())
+            (key) =>
+              key.toLowerCase().includes(imageId.toLowerCase()) ||
+              imageId.toLowerCase().includes(key.toLowerCase())
           );
-          
+
           if (potentialMatches.length > 0) {
             // Use the first potential match
             if (options.debugMode) {
-              console.log(`No exact match for ${imageId}, using potential match: ${potentialMatches[0]}`);
+              console.log(
+                `No exact match for ${imageId}, using potential match: ${potentialMatches[0]}`
+              );
             }
             description = imageDescriptions.get(potentialMatches[0]);
           }
@@ -163,7 +175,7 @@ export class MarkdownProcessor {
 
         if (options.debugMode) {
           console.log(`Looking for description for image: ${imageId}`);
-          console.log(`Description found: ${description ? 'Yes' : 'No'}`);
+          console.log(`Description found: ${description ? "Yes" : "No"}`);
         }
 
         if (description) {
@@ -172,17 +184,16 @@ export class MarkdownProcessor {
 
           if (options.keepOriginalImages) {
             // Keep the original image reference and add the description
-            replacement = `${match.full}\n\n> **Image Description:** ${description}\n\n`;
+            replacement = `${match.full}\n\n> **Image Description:** ${description}\n`;
           } else {
             // Replace the image with just the description
-            const captionPrefix = match.alt
-              ? `**${match.alt}:** `
-              : "**Image Description:** ";
-            replacement = `> ${captionPrefix}${description}\n\n`;
+            replacement = `> **Image Description:** ${description}\n`;
           }
 
           if (options.debugMode) {
-            console.log(`Replacing image reference "${match.full}" with description`);
+            console.log(
+              `Replacing image reference "${match.full}" with description`
+            );
           }
 
           // Replace the image reference with the enhanced version
@@ -226,95 +237,33 @@ export class MarkdownProcessor {
   }
 
   /**
-   * Extracts context for an image based on its position in the document
+   * Extracts context for an image from the page content
+   *
+   * Uses the entire page content as context instead of
+   * position-based heuristics
    *
    * @param pageContent Markdown content of the page
    * @param image Image object with position data
    * @returns Extracted context text
    */
   private extractImageContext(pageContent: string, image: OcrImage): string {
-    // Split the markdown into lines
-    const lines = pageContent.split("\n");
-    
-    // Position-based context extraction
-    const topY = image.topLeftY;
-    const bottomY = image.bottomRightY;
-    
-    // Look for content near the image position
-    // This assumes lines in the markdown roughly correspond to vertical position
-    
-    // Define a window of lines to check before and after the estimated image position
-    // This is a heuristic approach - we don't know exactly which lines correspond to image position
-    const lineCount = lines.length;
-    const estimatedPositionRatio = (topY + bottomY) / 2 / 1000; // Assuming page height normalized to 1000
-    const estimatedLinePosition = Math.floor(lineCount * estimatedPositionRatio);
-    
-    // Get lines around the estimated position (25% of document)
-    const contextWindowSize = Math.floor(lineCount * 0.25);
-    const startLine = Math.max(0, estimatedLinePosition - contextWindowSize);
-    const endLine = Math.min(lineCount, estimatedLinePosition + contextWindowSize);
-    
-    // Extract potential context lines
-    const nearbyLines = lines.slice(startLine, endLine);
-    
-    // Look for captions and headings in nearby lines
-    const captionPatterns = [
-      /figure \d+/i,
-      /fig\. \d+/i,
-      /fig \d+/i,
-      /table \d+/i,
-      /diagram/i,
-      /illustration/i,
-      /chart/i,
-      /graph/i,
-      /image/i,
-      /caption/i
-    ];
-    
-    const headingPattern = /^#{1,6}\s+.+$/;
-    
-    // Find the closest heading before the image
-    const headings = nearbyLines
-      .filter(line => headingPattern.test(line))
-      .map(line => line.replace(/^#{1,6}\s+/, '').trim());
-    
-    // Find potential captions
-    const captions = nearbyLines.filter(line => 
-      captionPatterns.some(pattern => pattern.test(line)) &&
-      !line.includes('![') // Exclude markdown image syntax
-    );
-    
-    // Build context string, prioritizing captions and headings
-    let contextParts: string[] = [];
-    
-    if (headings.length > 0) {
-      // Take the last heading before the image position
-      contextParts.push(`Section: ${headings[headings.length - 1]}`);
+    // Use the entire page content as context
+    // This ensures we capture all relevant information including captions
+
+    // Extract page number from image ID
+    const pageNumber = image.id.split("-")[0] || "unknown";
+
+    // Create a context summary
+    const contextSummary = `This image appears on page ${pageNumber}. The surrounding page content follows.`;
+
+    // Limit context length if too long (max ~2000 chars to avoid overwhelming the Vision API)
+    let pageText = pageContent;
+    if (pageText.length > 2000) {
+      pageText = pageText.substring(0, 1997) + "...";
     }
-    
-    if (captions.length > 0) {
-      // Take the closest caption
-      contextParts.push(`Caption: ${captions[0].trim()}`);
-    } else {
-      // If no caption found, include a few lines around the image for context
-      const surroundingText = nearbyLines
-        .filter(line => 
-          line.trim().length > 20 && // Only substantial lines
-          !line.startsWith('#') &&   // Not headings
-          !line.includes('![')       // Not image references
-        )
-        .slice(0, 3)                 // Take up to 3 lines
-        .join(' ');
-      
-      if (surroundingText) {
-        contextParts.push(`Surrounding text: ${surroundingText}`);
-      }
-    }
-    
-    // Add image position information
-    contextParts.push(`Image appears on page ${image.id.split('-')[0] || 'unknown'}`);
-    
-    return contextParts.join('. ');
+
+    // Return combined context
+    return `${contextSummary}\n\n${pageText}`;
   }
 }
 

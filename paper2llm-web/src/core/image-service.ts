@@ -429,30 +429,30 @@ export class MistralImageService implements ImageService {
    */
   private buildImagePrompt(contextText?: string): string {
     let prompt =
-      "Please describe this image in detail, focusing on all visible elements, text, and relevant information.\n";
+      "Please describe the visual content of this image in detail, focusing on all visible elements, text, and relevant information.\n";
 
-    // Add specific instructions for scholarly/technical content
+    // Core instruction focused on observable elements
     prompt +=
-      "If this appears to be from an academic or technical document, focus on describing charts, figures, diagrams, or technical illustrations with precise detail about data points, trends, labels, and their relationships.\n";
+      "Focus on visual elements directly observable in the image: shapes, colors, objects, arrangements, and any visible text.\n";
 
-    // Add instructions for OCR if text is visible
+    // Direct instruction for scholarly/technical content
     prompt +=
-      "If the image contains text, include a complete transcription of all visible text, preserving the layout and structure where relevant.\n";
+      "For academic or technical visuals: Identify the specific type (bar chart, line graph, flow diagram, etc.). Describe axes, labels, data points, and visual patterns exactly as they appear in the image.\n";
 
-    // Add specific guidance for common academic figure types
+    // Clear OCR directive
     prompt +=
-      "For graphs, describe the axes, data series, trends, and key findings. For diagrams, explain the components, connections, and overall meaning. For tables, describe the structure and summarize key information.\n";
+      "For any text visible in the image: Provide an accurate transcription, maintaining the original layout where meaningful.\n";
 
-    // Add instruction for figures with multiple panels
+    // Multi-panel guidance
     prompt +=
-      "If the figure has multiple panels, describe each panel separately. If the composition is unusual or the panels interact in a non-standard way, explain their relationship.\n";
+      "For images with multiple panels: Describe each panel separately based on its visual appearance. Note any panel labels if present. If the composition is unusual or the panels interact in a non-standard way, explain their relationship.\n";
 
-    // Add context-specific instructions
+    // Constructive context usage guidance
     if (contextText) {
-      prompt += `This image appears in the following context:\n<context>\n"${contextText}"\n</context>\nPlease tailor your description to relate to this context where appropriate.\n`;
+      prompt += `Context for reference: \n<context>\n${contextText}\n</context>\n. Use this only to correctly identify technical terms for what you can see in the image.\nYour image description should focus on the visual aspects of the figure and not a mere repetition of the image caption.\n`;
     }
 
-    // Add formatting guidance
+    // Clear output structure
     prompt +=
       'Format your response as a clear, concise paragraph. Start with a overview sentence identifying the type of image (e.g., "A line graph showing...", "A diagram illustrating...", "A photograph of..."), then provide specific details.';
 
@@ -467,58 +467,6 @@ export class MistralImageService implements ImageService {
       this.abortController.abort();
       this.abortController = null;
     }
-  }
-
-  /**
-   * Extracts context for an image based on OCR page data
-   * Returns text surrounding the image position
-   *
-   * @param ocrPageMarkdown Markdown content of the page
-   * @param topLeftY Position data of the image
-   * @param bottomRightY Position data of the image
-   * @returns Extracted context text
-   */
-  extractImageContext(
-    ocrPageMarkdown: string,
-    topLeftY: number,
-    bottomRightY: number
-  ): string {
-    // Simple context extraction by finding text near the image position
-    // Split the markdown into lines
-    const lines = ocrPageMarkdown.split("\n");
-
-    // Determine the area of interest (simulating proximity to image)
-    // This is a simplistic approach and could be improved with more sophisticated analysis
-    const contextLines: string[] = [];
-
-    // Collect lines that might be contextually relevant (headers, captions, surrounding text)
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i].trim();
-
-      // Check for headers or captions (potential context indicators)
-      if (
-        line.startsWith("#") ||
-        line.includes("Figure") ||
-        line.includes("Table") ||
-        line.includes("Chart") ||
-        line.includes("Graph") ||
-        line.includes("Diagram") ||
-        line.includes("Image") ||
-        line.includes("Photo") ||
-        line.includes("Caption") ||
-        line.includes("illustrat")
-      ) {
-        contextLines.push(line);
-      }
-    }
-
-    // Join and truncate to avoid excessively long context
-    let context = contextLines.join(" ");
-    if (context.length > 500) {
-      context = context.substring(0, 497) + "...";
-    }
-
-    return context;
   }
 }
 
