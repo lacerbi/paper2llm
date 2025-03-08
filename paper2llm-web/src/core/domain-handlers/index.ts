@@ -1,32 +1,30 @@
 // AI Summary: Central export point for all domain handlers.
-// Consolidates handler imports to simplify registration with the domain handler registry.
+// Uses the generic handler approach with repository-specific configurations
+// to handle multiple academic repositories with less code duplication.
 
-import { ArxivHandler } from './arxiv-handler';
-import { OpenReviewHandler } from './openreview-handler';
-import { AclAnthologyHandler } from './acl-handler';
-import { BioRxivHandler } from './biorxiv-handler';
-import { MedRxivHandler } from './medrxiv-handler';
-import { NipsHandler } from './nips-handler';
-import { MlrpHandler } from './mlrp-handler';
+import { 
+  GenericDomainHandler, 
+  createAllRepositoryHandlers,
+  createArxivConfig,
+  createOpenReviewConfig,
+  createAclConfig,
+  createBioRxivConfig,
+  createMedRxivConfig,
+  createNipsConfig,
+  createMlrpConfig
+} from './generic-handler';
 
-// Export all handlers
-export const handlers = [
-  new ArxivHandler(),
-  new OpenReviewHandler(),
-  new AclAnthologyHandler(),
-  new BioRxivHandler(),
-  new MedRxivHandler(),
-  new NipsHandler(),
-  new MlrpHandler()
-];
+// Export all handlers using the generic configuration-based approach
+export const handlers = createAllRepositoryHandlers();
 
-// Export individual handler classes for direct usage
-export {
-  ArxivHandler,
-  OpenReviewHandler,
-  AclAnthologyHandler,
-  BioRxivHandler,
-  MedRxivHandler,
-  NipsHandler,
-  MlrpHandler
+// Export the configurations and handler class for direct usage if needed
+export { 
+  GenericDomainHandler,
+  createArxivConfig,
+  createOpenReviewConfig,
+  createAclConfig,
+  createBioRxivConfig,
+  createMedRxivConfig,
+  createNipsConfig,
+  createMlrpConfig
 };

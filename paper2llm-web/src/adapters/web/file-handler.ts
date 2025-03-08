@@ -1,6 +1,6 @@
 // AI Summary: Provides browser-specific file handling for PDFs. Handles reading files,
-// validating PDFs, and fetching files from URLs with error handling and mime type checking.
-// Uses the domain handler registry to support multiple academic repositories.
+// validating PDFs, and fetching files from URLs with improved error handling and enhanced
+// domain handler integration. Uses the domain handler registry for academic repositories.
 
 import { FileHandler, PdfFile, DomainHandler } from '../../types/interfaces';
 import { domainHandlerRegistry } from '../../core/domain-handler-registry';
@@ -29,47 +29,75 @@ export class WebFileHandler implements FileHandler {
 
   /**
    * Fetches a PDF from a URL and returns a PdfFile
+   * Uses domain handlers for repository-specific URL normalization
    */
   async fetchFromUrl(url: string): Promise<PdfFile> {
     if (!this.validateUrl(url)) {
       throw new Error('Invalid URL format. Please provide a valid URL.');
     }
 
-    // Check for known academic domains that might have CORS restrictions
-    const isKnownAcademicDomain = [
-      'openreview.net',
-      'aclanthology.org',
-      'papers.nips.cc',
-      'proceedings.mlr.press'
-    ].some(domain => url.includes(domain));
-
-    // For known academic domains, use direct URL processing to avoid CORS issues
-    if (isKnownAcademicDomain) {
-      console.log(`Using direct processing for academic URL: ${url}`);
-      const fileName = this.extractFileNameFromUrl(url);
-      
-      return {
-        name: fileName,
-        size: 0, // Size unknown until fetched
-        type: 'application/pdf',
-        content: new Blob(), // Empty blob as placeholder
-        source: 'url',
-        originalUrl: url,
-        directProcessUrl: true // Signal to OCR service to use direct URL processing
-      };
-    }
-
     // Check if we have a domain handler for this URL
     const domainHandler = domainHandlerRegistry.getHandler(url);
     
+    // For academic repositories with a domain handler
     if (domainHandler) {
-      // Normalize the URL for this domain
+      console.log(`Using domain-specific handling for URL: ${url}`);
+      return this.processDomainHandlerUrl(url, domainHandler);
+    }
+    
+    // For general URLs without a specific domain handler
+    return this.processGenericUrl(url);
+  }
+
+  /**
+   * Processes a URL using a domain-specific handler
+   * @param url The original URL
+   * @param domainHandler The domain handler to use
+   */
+  private async processDomainHandlerUrl(url: string, domainHandler: DomainHandler): Promise<PdfFile> {
+    try {
+      // Normalize the URL for this domain (usually converts to direct PDF URL)
       const normalizedUrl = domainHandler.normalizePdfUrl(url);
       
-      console.log(`Using domain-specific handling for URL: ${url} -> ${normalizedUrl}`);
+      console.log(`Normalized URL: ${url} -> ${normalizedUrl}`);
       
+      // Get a descriptive filename based on the repository's naming pattern
+      const fileName = domainHandler.getFileName(url);
+      
+      // First attempt a HEAD request to check if the PDF is directly accessible
+      const isPdf = await this.checkUrlContentType(normalizedUrl);
+      
+      // If the normalized URL is directly accessible, try direct fetch
+      if (isPdf) {
+        try {
+          console.log(`Attempting direct fetch for normalized URL: ${normalizedUrl}`);
+          const response = await fetch(normalizedUrl, {
+            method: 'GET',
+            mode: 'cors',
+          });
+          
+          if (response.ok) {
+            const blob = await response.blob();
+            return {
+              name: fileName,
+              size: blob.size,
+              type: 'application/pdf',
+              content: blob,
+              source: 'url',
+              originalUrl: normalizedUrl
+            };
+          }
+          // Fall through to direct processing if fetch fails
+          console.log(`Direct fetch failed with status ${response.status}, using direct processing for: ${normalizedUrl}`);
+        } catch (error) {
+          console.log(`Fetch error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+      }
+      
+      // If direct fetch failed or was not possible, use direct processing
+      // This signals to the OCR service to fetch the URL directly rather than sending blob data
       return {
-        name: domainHandler.getFileName(url),
+        name: fileName,
         size: 0, // Size unknown until fetched
         type: 'application/pdf',
         content: new Blob(), // Empty blob as placeholder
@@ -77,17 +105,26 @@ export class WebFileHandler implements FileHandler {
         originalUrl: normalizedUrl,
         directProcessUrl: true // Signal to OCR service to use direct URL processing
       };
+    } catch (error) {
+      console.error(`Error processing domain-specific URL: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new Error(`Failed to process PDF URL. Please check the URL and try again.`);
     }
-
-    // For non-domain-specific URLs, check content type before downloading
+  }
+  
+  /**
+   * Processes a generic URL without domain-specific handling
+   * @param url The URL to process
+   */
+  private async processGenericUrl(url: string): Promise<PdfFile> {
+    // For URLs without a specific domain handler, check content type before downloading
     const isPdf = await this.checkUrlContentType(url);
     if (!isPdf) {
       throw new Error('The URL does not appear to point to a PDF file. Please provide a valid PDF URL.');
     }
 
-    // For URLs without a specific domain handler, proceed with traditional fetching
+    // For generic URLs, proceed with traditional fetching
     try {
-      console.log(`Attempting to fetch URL directly: ${url}`);
+      console.log(`Attempting to fetch generic URL directly: ${url}`);
       const response = await fetch(url, {
         method: 'GET',
         mode: 'cors',
@@ -157,6 +194,8 @@ export class WebFileHandler implements FileHandler {
   /**
    * Performs a HEAD request to check if a URL points to a PDF
    * without downloading the entire file
+   * @param url The URL to check
+   * @returns true if the URL is likely a PDF, false otherwise
    */
   private async checkUrlContentType(url: string): Promise<boolean> {
     try {
@@ -166,22 +205,29 @@ export class WebFileHandler implements FileHandler {
       });
       
       if (!response.ok) {
-        return false;
+        // If HEAD request fails, we can't determine content type
+        // We'll return true and validate later when downloading
+        console.log(`HEAD request failed for ${url}, will try downloading directly`);
+        return true;
       }
       
       const contentType = response.headers.get('content-type');
-      return contentType ? 
+      const result = contentType ? 
         ['application/pdf', 'binary/octet-stream'].some(type => contentType.includes(type)) : 
         false;
+      
+      console.log(`Content type check for ${url}: ${contentType} -> isPdf: ${result}`);
+      return result;
     } catch (error) {
-      console.warn(`Cannot check content type for ${url}: ${error}`);
+      console.warn(`Cannot check content type for ${url}: ${error instanceof Error ? error.message : 'Unknown error'}`);
       // If we can't check, we'll return true and validate later when downloading
       return true;
     }
   }
 
   /**
-   * Checks if a URL is from arXiv using the domain handler registry
+   * Checks if a URL is from arXiv
+   * @deprecated Use the domain handler registry instead
    */
   isArxivUrl(url: string): boolean {
     try {
@@ -195,6 +241,8 @@ export class WebFileHandler implements FileHandler {
 
   /**
    * Validates if a file is a PDF
+   * @param file The file to validate
+   * @returns true if the file is a PDF, false otherwise
    */
   validatePdf(file: File | Blob): boolean {
     return file.type === 'application/pdf';
@@ -202,7 +250,9 @@ export class WebFileHandler implements FileHandler {
 
   /**
    * Validates if a URL is well-formed and potentially points to a PDF
-   * No longer relies on .pdf extension for validation
+   * Also checks with the domain handler registry if this is a supported academic URL
+   * @param url The URL to validate
+   * @returns true if the URL is valid, false otherwise
    */
   validateUrl(url: string): boolean {
     try {
@@ -213,7 +263,7 @@ export class WebFileHandler implements FileHandler {
         return true;
       }
       
-      // Return true if the URL is valid
+      // For generic URLs, we only require that it's well-formed
       return url.trim() !== '';
     } catch (e) {
       return false;
@@ -222,6 +272,9 @@ export class WebFileHandler implements FileHandler {
 
   /**
    * Extracts a filename from a URL
+   * Uses domain handlers when possible, falls back to URL path extraction
+   * @param url The URL to extract filename from
+   * @returns A filename suitable for the PDF
    */
   private extractFileNameFromUrl(url: string): string {
     try {
@@ -229,19 +282,6 @@ export class WebFileHandler implements FileHandler {
       const domainHandler = domainHandlerRegistry.getHandler(url);
       if (domainHandler) {
         return domainHandler.getFileName(url);
-      }
-      
-      // Handle OpenReview URLs specifically
-      if (url.includes('openreview.net')) {
-        try {
-          const urlObj = new URL(url);
-          const paperId = urlObj.searchParams.get('id');
-          if (paperId) {
-            return `openreview-${paperId}.pdf`;
-          }
-        } catch (e) {
-          // Fall through to standard handling
-        }
       }
       
       // Standard URL processing if no domain handler
