@@ -7,7 +7,8 @@ import {
   OcrOptions, 
   OcrResult, 
   ProgressReporter, 
-  PdfFile 
+  PdfFile,
+  ProgressUpdate
 } from '../types/interfaces';
 
 export class MistralOcrService implements OcrService {
@@ -56,8 +57,11 @@ export class MistralOcrService implements OcrService {
         });
       }
       
-      // Determine method based on file source
-      if (file.source === 'upload') {
+      // Determine method based on file source and direct processing capability
+      if (file.directProcessUrl === true && file.originalUrl) {
+        // Direct URL processing for arXiv and similar academic URLs
+        return await this.processDirectUrl(file.originalUrl, apiKey, options, progressReporter);
+      } else if (file.source === 'upload') {
         return await this.processUploadedPdf(file, apiKey, options, progressReporter);
       } else if (file.source === 'url' && file.originalUrl) {
         return await this.processPdfUrl(file.originalUrl, apiKey, options, progressReporter);
@@ -79,7 +83,8 @@ export class MistralOcrService implements OcrService {
   }
 
   /**
-   * Processes a PDF from a URL with OCR
+   * Process a PDF from a URL
+   * Implementation of interface method for direct URL processing
    */
   public async processPdfUrl(
     url: string, 
@@ -276,7 +281,7 @@ export class MistralOcrService implements OcrService {
         apiKey, 
         options, 
         {
-          reportProgress: (update) => {
+          reportProgress: (update: ProgressUpdate) => {
             if (progressReporter) {
               // Adjust progress to fit in the 40-100 range
               const adjustedProgress = (update.progress / 100) * 60 + 40;
@@ -286,12 +291,12 @@ export class MistralOcrService implements OcrService {
               });
             }
           },
-          reportError: (error, stage) => {
+          reportError: (error: Error, stage: string) => {
             if (progressReporter) {
               progressReporter.reportError(error, stage);
             }
           },
-          reportComplete: (result) => {
+          reportComplete: (result: OcrResult) => {
             if (progressReporter) {
               progressReporter.reportComplete(result);
             }
@@ -313,6 +318,108 @@ export class MistralOcrService implements OcrService {
       }
       
       throw processedError;
+    }
+  }
+
+  /**
+   * Directly processes a PDF URL using Mistral API without downloading
+   * Optimized for arXiv and academic URLs
+   */
+  private async processDirectUrl(
+    url: string, 
+    apiKey: string, 
+    options: OcrOptions = {}, 
+    progressReporter?: ProgressReporter
+  ): Promise<OcrResult> {
+    if (!url) {
+      throw new Error('URL is required');
+    }
+    
+    if (!apiKey) {
+      throw new Error('API key is required');
+    }
+    
+    // If there was a previous operation, cancel it
+    if (this.abortController) {
+      this.abortController.abort();
+    }
+    
+    // Create a new abort controller for this operation
+    this.abortController = new AbortController();
+    
+    try {
+      if (progressReporter) {
+        progressReporter.reportProgress({
+          stage: 'submitting',
+          progress: 10,
+          message: 'Submitting URL directly to OCR service'
+        });
+      }
+      
+      // For arXiv URLs, ensure we're using the PDF version
+      let processUrl = url;
+      if (url.includes('arxiv.org') && !url.includes('/pdf/')) {
+        // Convert /abs/ or /html/ to /pdf/
+        processUrl = url.replace(/\/(abs|html)\//, '/pdf/');
+        console.log(`Direct processing with converted arXiv URL: ${processUrl}`);
+      }
+      
+      const response = await this.axiosInstance.post(
+        '/ocr',
+        {
+          model: options.model || this.defaultModel,
+          document: {
+            type: 'document_url',
+            document_url: processUrl
+          },
+          include_image_base64: options.includeImageBase64 !== false
+        },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+          },
+          signal: this.abortController.signal,
+          onDownloadProgress: (progressEvent) => {
+            if (progressReporter && progressEvent.total) {
+              const progress = Math.round((progressEvent.loaded / progressEvent.total) * 70) + 20;
+              progressReporter.reportProgress({
+                stage: 'downloading',
+                progress: progress,
+                message: 'Downloading OCR results',
+                detail: `${Math.round(progressEvent.loaded / 1024)} KB of ${Math.round(progressEvent.total / 1024)} KB`
+              });
+            }
+          }
+        }
+      );
+
+      if (progressReporter) {
+        progressReporter.reportProgress({
+          stage: 'processing',
+          progress: 90,
+          message: 'Processing OCR results'
+        });
+      }
+      
+      const ocrResult = this.processResponse(response);
+      
+      if (progressReporter) {
+        progressReporter.reportComplete(ocrResult);
+      }
+      
+      return ocrResult;
+    } catch (error) {
+      // Handle and transform error
+      const processedError = this.handleError(error as Error | AxiosError);
+      
+      if (progressReporter) {
+        progressReporter.reportError(processedError, 'ocr-processing');
+      }
+      
+      throw processedError;
+    } finally {
+      this.abortController = null;
     }
   }
 

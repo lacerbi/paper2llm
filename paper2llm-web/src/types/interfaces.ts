@@ -11,6 +11,7 @@ export interface PdfFile {
   content: File | Blob | ArrayBuffer;
   source: 'upload' | 'url';
   originalUrl?: string;
+  directProcessUrl?: boolean; // indicates if URL can be processed directly by Mistral OCR
 }
 
 /**

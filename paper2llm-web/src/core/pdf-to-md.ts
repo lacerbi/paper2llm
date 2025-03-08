@@ -117,7 +117,7 @@ export class PdfToMdService {
         markdownResult,
         sourceFile: {
           name: file.name,
-          size: file.size,
+          size: file.directProcessUrl ? ocrResult.pages.length : file.size, // Use page count for direct URLs
           source: file.source,
           originalUrl: file.originalUrl
         },
