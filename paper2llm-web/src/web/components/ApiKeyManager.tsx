@@ -291,7 +291,7 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
     });
 
     // Reset security options to defaults
-    setExpiration("never");
+    setExpiration("session");
     setPasswordError(null);
   };
 
@@ -453,7 +453,7 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
                   color="error"
                   size="small"
                   fullWidth
-                  sx={{ height: "100%" }}
+                  sx={{ height: "40px", display: "flex", alignItems: "center" }}
                 >
                   Clear Key
                 </Button>
@@ -542,25 +542,19 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
                   sx={{ mb: 2 }}
                   onClose={toggleSecurityInfo}
                 >
-                  <AlertTitle>Security Information</AlertTitle>
-                  <Typography variant="body2" paragraph>
-                    <strong>Storage type:</strong> Controlled by expiration
-                    selection:
+                  <AlertTitle>API Key Security Information</AlertTitle>
+                  <Typography variant="body2" paragraph sx={{ pl: 2 }}>
+                    • API Key is only passed to the LLM provider and stored
+                    encrypted.
                   </Typography>
                   <Typography variant="body2" paragraph sx={{ pl: 2 }}>
-                    • <strong>Session:</strong> API key stored in session
-                    storage and cleared when the browser closes. Uses an
-                    auto-generated encryption key (no password needed).
+                    • <strong>Session only:</strong> Temporary storage that
+                    clears when browser closes.
                   </Typography>
                   <Typography variant="body2" paragraph sx={{ pl: 2 }}>
-                    • <strong>1 Day/7 Days/30 Days/Never:</strong> API key
-                    stored in local storage with specified expiration.
-                    <strong> Password is required</strong> for encryption
-                    between browser sessions.
-                  </Typography>
-                  <Typography variant="body2">
-                    <strong>Expiration:</strong> Determines when stored API keys
-                    are automatically cleared.
+                    • <strong>Duration:</strong> Persistent storage with
+                    specified expiration. <strong>Password required</strong> for
+                    security.
                   </Typography>
                 </Alert>
               )}
