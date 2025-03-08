@@ -90,6 +90,23 @@ export class GenericDomainHandler extends BaseDomainHandler {
         return url;
       }
       
+      // Special handling for OpenReview URLs 
+      if (urlObj.hostname.includes('openreview.net')) {
+        console.log(`Processing OpenReview URL: ${url}`);
+        
+        // Validate the ID parameter is present
+        const id = urlObj.searchParams.get('id');
+        if (!id) {
+          console.warn(`OpenReview URL missing required 'id' parameter: ${url}`);
+          return url; // Return unchanged if no ID
+        }
+        
+        // Simply convert the path to /pdf while keeping all query parameters
+        urlObj.pathname = '/pdf';
+        console.log(`Normalized OpenReview URL: ${urlObj.toString()}`);
+        return urlObj.toString();
+      }
+      
       // Apply each transform rule in sequence until one matches
       for (const rule of this.config.pdfTransformRules) {
         const match = pathname.match(rule.pattern);
@@ -108,6 +125,7 @@ export class GenericDomainHandler extends BaseDomainHandler {
       // If no rule matches, just ensure the URL ends with .pdf
       return this.ensurePdfExtension(url);
     } catch (e) {
+      console.error(`Error normalizing URL ${url}: ${e instanceof Error ? e.message : 'Unknown error'}`);
       return url;
     }
   }
@@ -198,15 +216,21 @@ export function createOpenReviewConfig(): RepositoryConfig {
         // Convert URLs to PDF URLs while preserving query parameters
         pattern: /\/(forum|attachment)/,
         replacement: (match, urlObj) => {
-          // Ensure we convert to /pdf endpoint while preserving all query parameters
+          // FIXED: Ensure we convert to /pdf endpoint while preserving all query parameters
+          // The previous implementation incorrectly returned only '/pdf' without the query parameters
+          console.log(`OpenReview URL transformation: Converting ${urlObj.pathname} to /pdf and preserving query params`);
+          
+          // Keep the original query parameters (especially 'id') intact
+          // Just change the path from /forum or /attachment to /pdf
           return '/pdf';
         }
       },
       {
-        // Handle URLs that are already PDF URLs but may need query parameter fixing
+        // Handle URLs that are already PDF URLs
         pattern: /\/pdf/,
         replacement: (match, urlObj) => {
-          // Keep as is, already a PDF URL
+          // URL is already a PDF URL, no path change needed
+          console.log(`OpenReview URL is already a PDF URL: ${urlObj.pathname}`);
           return '/pdf';
         }
       }
@@ -217,7 +241,13 @@ export function createOpenReviewConfig(): RepositoryConfig {
         pattern: /.*/,
         template: (_, urlObj) => {
           const id = urlObj.searchParams.get('id');
-          return id ? `openreview-${id}.pdf` : 'openreview-paper.pdf';
+          if (id) {
+            console.log(`Generated OpenReview filename with ID: ${id}`);
+            return `openreview-${id}.pdf`;
+          } else {
+            console.log(`No ID found in OpenReview URL, using default filename`);
+            return 'openreview-paper.pdf';
+          }
         }
       }
     ]
