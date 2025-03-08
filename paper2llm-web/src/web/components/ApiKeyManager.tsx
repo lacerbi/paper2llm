@@ -1,6 +1,6 @@
 // AI Summary: React component for secure Mistral API key management.
 // Provides UI for entering, storing, and retrieving API keys with optional password protection.
-// Now uses Material UI components for consistent styling.
+// Now uses a compact layout with horizontal arrangement of elements.
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
@@ -15,13 +15,17 @@ import {
   Paper,
   Alert,
   Divider,
-  useTheme
+  useTheme,
+  Grid,
+  Stack,
+  Chip
 } from '@mui/material';
 import {
   Visibility as VisibilityIcon,
   VisibilityOff as VisibilityOffIcon,
   Key as KeyIcon,
-  Lock as LockIcon
+  Lock as LockIcon,
+  Check as CheckIcon
 } from '@mui/icons-material';
 import { ApiKeyManagerState } from '../../types/interfaces';
 import { webApiKeyStorage } from '../../adapters/web/api-storage';
@@ -174,76 +178,56 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
   };
 
   return (
-    <Box sx={{ mb: 4 }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-        <KeyIcon sx={{ mr: 1, color: 'primary.main' }} />
-        <Typography variant="h5" component="h2">
-          Mistral API Key
-        </Typography>
-      </Box>
+    <Box sx={{ mb: 2 }}>
+      {/* Compact header with API status */}
+      <Stack 
+        direction="row" 
+        alignItems="center" 
+        justifyContent="space-between" 
+        sx={{ mb: 2 }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+          <KeyIcon sx={{ mr: 1, color: 'primary.main' }} />
+          <Typography variant="h6" component="h2">
+            Mistral API Key
+          </Typography>
+        </Box>
+        
+        {state.isAuthenticated && (
+          <Chip
+            icon={<CheckIcon />}
+            label="API Key Active"
+            color="success"
+            size="small"
+            variant="outlined"
+          />
+        )}
+      </Stack>
       
       {!state.isStored || state.isAuthenticated ? (
         <Box component="form" onSubmit={handleSubmit} sx={{ width: '100%' }}>
-          <FormControl fullWidth sx={{ mb: 2 }}>
-            <TextField
-              id="apiKey"
-              label="API Key"
-              type={state.showPassword ? 'text' : 'password'}
-              value={state.apiKey}
-              onChange={handleApiKeyChange}
-              placeholder="Enter your Mistral API key"
-              disabled={state.isAuthenticated}
-              required
-              fullWidth
-              variant="outlined"
-              InputProps={{
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <IconButton
-                      aria-label="toggle password visibility"
-                      onClick={toggleShowPassword}
-                      edge="end"
-                    >
-                      {state.showPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}
-                    </IconButton>
-                  </InputAdornment>
-                ),
-              }}
-            />
-            {state.isAuthenticated ? (
-              <Alert severity="success" sx={{ mt: 1 }}>
-                API key is active and ready to use
-              </Alert>
-            ) : (
-              <FormHelperText>
-                You can get your API key from the Mistral AI dashboard
-              </FormHelperText>
-            )}
-          </FormControl>
-
-          {!state.isAuthenticated && (
-            <FormControl fullWidth sx={{ mb: 2 }}>
+          <Grid container spacing={2} alignItems="flex-start">
+            <Grid item xs={12} md={state.isAuthenticated ? 10 : 6}>
               <TextField
-                id="password"
-                label="Password (Optional)"
+                id="apiKey"
+                label="API Key"
                 type={state.showPassword ? 'text' : 'password'}
-                value={state.password}
-                onChange={handlePasswordChange}
-                placeholder="Password for additional encryption"
+                value={state.apiKey}
+                onChange={handleApiKeyChange}
+                placeholder="Enter your Mistral API key"
+                disabled={state.isAuthenticated}
+                required
                 fullWidth
+                size="small"
                 variant="outlined"
                 InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <LockIcon />
-                    </InputAdornment>
-                  ),
                   endAdornment: (
                     <InputAdornment position="end">
                       <IconButton
                         aria-label="toggle password visibility"
                         onClick={toggleShowPassword}
                         edge="end"
+                        size="small"
                       >
                         {state.showPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}
                       </IconButton>
@@ -251,59 +235,93 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
                   ),
                 }}
               />
-              <FormHelperText>
-                Adding a password provides an extra layer of security
-              </FormHelperText>
-            </FormControl>
-          )}
-
+            </Grid>
+            
+            {state.isAuthenticated && (
+              <Grid item xs={12} md={2}>
+                <Button 
+                  onClick={clearApiKey} 
+                  variant="outlined"
+                  color="error"
+                  size="small"
+                  fullWidth
+                  sx={{ height: '100%' }}
+                >
+                  Clear Key
+                </Button>
+              </Grid>
+            )}
+            
+            {!state.isAuthenticated && (
+              <>
+                <Grid item xs={12} md={4}>
+                  <TextField
+                    id="password"
+                    label="Password (Optional)"
+                    type={state.showPassword ? 'text' : 'password'}
+                    value={state.password}
+                    onChange={handlePasswordChange}
+                    placeholder="For extra security"
+                    fullWidth
+                    size="small"
+                    variant="outlined"
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <LockIcon fontSize="small" />
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                </Grid>
+                
+                <Grid item xs={12} md={2}>
+                  <Button
+                    type="submit"
+                    variant="contained"
+                    color="primary"
+                    disabled={!state.isValid && !state.isStored}
+                    fullWidth
+                    size="medium"
+                    sx={{ height: '100%' }}
+                  >
+                    {state.isStored ? 'Unlock' : 'Save'}
+                  </Button>
+                </Grid>
+              </>
+            )}
+          </Grid>
+          
           {state.error && (
-            <Alert severity="error" sx={{ mb: 2 }}>
+            <Alert severity="error" sx={{ mt: 1 }}>
               {state.error}
             </Alert>
-          )}
-
-          {!state.isAuthenticated && (
-            <Button
-              type="submit"
-              variant="contained"
-              color="primary"
-              disabled={!state.isValid && !state.isStored}
-              fullWidth
-              sx={{ mb: 2 }}
-            >
-              {state.isStored ? 'Unlock API Key' : 'Save API Key'}
-            </Button>
           )}
         </Box>
       ) : (
         <Paper 
           variant="outlined" 
           sx={{ 
-            p: 3, 
-            mb: 2, 
+            p: 2,
+            mb: 1,
             borderLeft: '4px solid', 
             borderColor: 'info.main' 
           }}
         >
-          <Typography variant="h6" gutterBottom>
-            Your API key is password-protected
-          </Typography>
-          <Typography paragraph>
-            Enter your password to unlock it
-          </Typography>
-          
-          <Box component="form" onSubmit={handleSubmit} sx={{ mt: 3 }}>
-            <FormControl fullWidth sx={{ mb: 2 }}>
+          <Grid container spacing={2} alignItems="center">
+            <Grid item xs={12} md={8}>
+              <Typography variant="subtitle1" sx={{ mb: 0.5 }}>
+                Enter password to unlock your API key
+              </Typography>
               <TextField
                 id="password"
-                label="Password"
                 type={state.showPassword ? 'text' : 'password'}
                 value={state.password}
                 onChange={handlePasswordChange}
                 placeholder="Enter your password"
                 required
                 fullWidth
+                size="small"
                 variant="outlined"
                 InputProps={{
                   endAdornment: (
@@ -312,6 +330,7 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
                         aria-label="toggle password visibility"
                         onClick={toggleShowPassword}
                         edge="end"
+                        size="small"
                       >
                         {state.showPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}
                       </IconButton>
@@ -319,38 +338,27 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
                   ),
                 }}
               />
-            </FormControl>
+            </Grid>
             
-            {state.error && (
-              <Alert severity="error" sx={{ mb: 2 }}>
-                {state.error}
-              </Alert>
-            )}
-            
-            <Button 
-              type="submit" 
-              variant="contained" 
-              color="primary"
-              fullWidth
-            >
-              Unlock
-            </Button>
-          </Box>
+            <Grid item xs={12} md={4}>
+              <Button 
+                onClick={handleSubmit} 
+                variant="contained" 
+                color="primary"
+                fullWidth
+                sx={{ mt: { xs: 0, md: 3 } }}
+              >
+                Unlock
+              </Button>
+            </Grid>
+          </Grid>
+          
+          {state.error && (
+            <Alert severity="error" sx={{ mt: 1 }}>
+              {state.error}
+            </Alert>
+          )}
         </Paper>
-      )}
-
-      {state.isAuthenticated && (
-        <Box sx={{ mt: 2 }}>
-          <Divider sx={{ mb: 2 }} />
-          <Button 
-            onClick={clearApiKey} 
-            variant="outlined"
-            color="error"
-            size="small"
-          >
-            Clear API Key
-          </Button>
-        </Box>
       )}
     </Box>
   );
