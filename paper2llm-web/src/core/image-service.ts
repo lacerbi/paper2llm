@@ -9,6 +9,7 @@ import {
   ProgressReporter,
   ProgressUpdate,
 } from "../types/interfaces";
+import { formatImagePrompt } from "./templates/image-prompt-template";
 
 /**
  * Custom error types for image processing failures
@@ -423,40 +424,13 @@ export class MistralImageService implements ImageService {
 
   /**
    * Builds a prompt for the Vision API based on the context
+   * Uses the template from image-prompt-template.ts
    *
    * @param contextText Optional context text related to the image
    * @returns Formatted prompt string
    */
   private buildImagePrompt(contextText?: string): string {
-    let prompt =
-      "Please describe the visual content of this image in detail, focusing on all visible elements, text, and relevant information.\n";
-
-    // Core instruction focused on observable elements
-    prompt +=
-      "Focus on visual elements directly observable in the image: shapes, colors, objects, arrangements, and any visible text.\n";
-
-    // Direct instruction for scholarly/technical content
-    prompt +=
-      "For academic or technical visuals: Identify the specific type (bar chart, line graph, flow diagram, etc.). Describe axes, labels, data points, and visual patterns exactly as they appear in the image.\n";
-
-    // Clear OCR directive
-    prompt +=
-      "For any text visible in the image: Provide an accurate transcription, maintaining the original layout where meaningful.\n";
-
-    // Multi-panel guidance
-    prompt +=
-      "For images with multiple panels: Describe each panel separately based on its visual appearance. Note any panel labels if present. If the composition is unusual or the panels interact in a non-standard way, explain their relationship.\n";
-
-    // Constructive context usage guidance
-    if (contextText) {
-      prompt += `Context for reference: \n<context>\n${contextText}\n</context>\n. Use this only to correctly identify technical terms for what you can see in the image.\nYour image description should focus on the visual aspects of the figure and not a mere repetition of the image caption.\n`;
-    }
-
-    // Clear output structure
-    prompt +=
-      'Format your response as a clear, concise paragraph. Start with a overview sentence identifying the type of image (e.g., "A line graph showing...", "A diagram illustrating...", "A photograph of..."), then provide specific details.';
-
-    return prompt;
+    return formatImagePrompt(contextText);
   }
 
   /**
