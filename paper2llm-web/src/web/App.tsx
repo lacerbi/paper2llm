@@ -12,6 +12,12 @@ import {
   Divider,
   Button,
   useTheme,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Grid,
+  SelectChangeEvent,
 } from "@mui/material";
 import FileUploader from "./components/FileUploader";
 import ApiKeyManager from "./components/ApiKeyManager";
@@ -33,11 +39,17 @@ const App: React.FC = () => {
   );
   const [conversionResult, setConversionResult] =
     useState<PdfToMdResult | null>(null);
+  const [visionModel, setVisionModel] = useState<string>("pixtral-12b-2409");
 
   // Handle API key changes
   const handleApiKeyChange = (key: string) => {
     setApiKey(key);
     setIsApiKeyValid(key.length > 0);
+  };
+  
+  // Handle model selection changes
+  const handleModelChange = (event: SelectChangeEvent) => {
+    setVisionModel(event.target.value);
   };
 
   // Handle file selection
@@ -88,7 +100,8 @@ const App: React.FC = () => {
           processImages: true,
           keepOriginalImages: false,
         },
-        webProgressReporter
+        webProgressReporter,
+        visionModel
       );
 
       setConversionResult(result);
@@ -153,14 +166,33 @@ const App: React.FC = () => {
 
                 {pdfFile && !isProcessing && (
                   <Box sx={{ mt: 3 }}>
-                    <Button
-                      variant="contained"
-                      color="secondary"
-                      fullWidth
-                      onClick={startConversion}
-                    >
-                      Process PDF
-                    </Button>
+                    <Grid container spacing={2} alignItems="center">
+                      <Grid item xs={12} sm={6}>
+                        <FormControl fullWidth size="small">
+                          <InputLabel id="vision-model-label">Vision Model</InputLabel>
+                          <Select
+                            labelId="vision-model-label"
+                            id="vision-model-select"
+                            value={visionModel}
+                            label="Vision Model"
+                            onChange={handleModelChange}
+                          >
+                            <MenuItem value="pixtral-12b-2409">Pixtral (pixtral-12b-2409)</MenuItem>
+                            <MenuItem value="pixtral-large-latest">Pixtral Large (pixtral-large-latest)</MenuItem>
+                          </Select>
+                        </FormControl>
+                      </Grid>
+                      <Grid item xs={12} sm={6}>
+                        <Button
+                          variant="contained"
+                          color="secondary"
+                          fullWidth
+                          onClick={startConversion}
+                        >
+                          Process PDF
+                        </Button>
+                      </Grid>
+                    </Grid>
                   </Box>
                 )}
               </Box>

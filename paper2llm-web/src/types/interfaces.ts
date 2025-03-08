@@ -323,12 +323,14 @@ export interface ImageService {
    * @param image OcrImage object containing image data
    * @param apiKey Mistral API key
    * @param contextText Optional context to include with the image
+   * @param model Optional model name to use for image description (defaults to pixtral-12b-2409)
    * @returns Promise resolving to the image description
    */
   describeImage(
     image: OcrImage,
     apiKey: string,
-    contextText?: string
+    contextText?: string,
+    model?: string
   ): Promise<string>;
   
   /**
@@ -338,13 +340,15 @@ export interface ImageService {
    * @param apiKey Mistral API key
    * @param contextMap Optional map of image IDs to context text
    * @param progressReporter Optional progress reporter
+   * @param model Optional model name to use for image description (defaults to pixtral-12b-2409)
    * @returns Promise resolving to a map of image IDs to descriptions
    */
   describeImages(
     images: OcrImage[],
     apiKey: string,
     contextMap?: Map<string, string>,
-    progressReporter?: ProgressReporter
+    progressReporter?: ProgressReporter,
+    model?: string
   ): Promise<Map<string, string>>;
   
   /**

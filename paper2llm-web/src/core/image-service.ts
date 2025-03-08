@@ -34,6 +34,7 @@ export class MistralImageService implements ImageService {
   private readonly apiBaseUrl: string =
     "https://api.mistral.ai/v1/chat/completions";
   private readonly defaultModel: string = "pixtral-12b-2409";
+  private readonly availableModels: string[] = ["pixtral-12b-2409", "pixtral-large-latest"];
   private axiosInstance: AxiosInstance;
   private abortController: AbortController | null = null;
   private maxRetries: number = 2;
@@ -61,6 +62,7 @@ export class MistralImageService implements ImageService {
     image: OcrImage,
     apiKey: string,
     contextText?: string,
+    model?: string,
     retryCount: number = 0
   ): Promise<string> {
     try {
@@ -76,9 +78,12 @@ export class MistralImageService implements ImageService {
       // Prepare the image URL with base64 data, ensuring proper formatting
       const imageUrl = this.formatImageUrl(image.base64);
 
+      // Validate model if provided, otherwise use default
+      const selectedModel = this.validateModel(model);
+      
       // Create the request payload
       const payload = {
-        model: this.defaultModel,
+        model: selectedModel,
         messages: [
           {
             role: "user",
@@ -219,7 +224,7 @@ export class MistralImageService implements ImageService {
         await new Promise((resolve) =>
           setTimeout(resolve, this.retryDelay * (retryCount + 1))
         );
-        return this.describeImage(image, apiKey, contextText, retryCount + 1);
+        return this.describeImage(image, apiKey, contextText, model, retryCount + 1);
       }
 
       // Re-throw any other errors
@@ -300,11 +305,26 @@ export class MistralImageService implements ImageService {
    * @param progressReporter Optional progress reporter
    * @returns Promise resolving to a map of image IDs to descriptions
    */
+  /**
+   * Validates the provided model name or falls back to default
+   * 
+   * @param model Optional model name to validate
+   * @returns A valid model name
+   */
+  private validateModel(model?: string): string {
+    // If no model provided or provided model is not in the list of available models, use default
+    if (!model || !this.availableModels.includes(model)) {
+      return this.defaultModel;
+    }
+    return model;
+  }
+
   async describeImages(
     images: OcrImage[],
     apiKey: string,
     contextMap?: Map<string, string>,
-    progressReporter?: ProgressReporter
+    progressReporter?: ProgressReporter,
+    model?: string
   ): Promise<Map<string, string>> {
     const results = new Map<string, string>();
     const totalImages = images.length;
@@ -351,7 +371,7 @@ export class MistralImageService implements ImageService {
 
         try {
           // Get description for the image
-          const description = await this.describeImage(image, apiKey, context);
+          const description = await this.describeImage(image, apiKey, context, model);
           results.set(image.id, description);
 
           // Add a small delay between API calls to avoid rate limiting

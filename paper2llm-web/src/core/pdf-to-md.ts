@@ -21,7 +21,8 @@ export class PdfToMdService {
     apiKey: string,
     ocrOptions: OcrOptions = {},
     markdownOptions: MarkdownOptions = {},
-    progressReporter?: ProgressReporter
+    progressReporter?: ProgressReporter,
+    visionModel?: string
   ): Promise<PdfToMdResult> {
     try {
       // Step 1: Process the PDF with OCR
@@ -80,7 +81,8 @@ export class PdfToMdService {
             allImages,
             apiKey,
             contextMap,
-            progressReporter
+            progressReporter,
+            visionModel
           );
           
           if (progressReporter) {
