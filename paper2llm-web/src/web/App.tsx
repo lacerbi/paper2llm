@@ -1,8 +1,8 @@
 // AI Summary: Main application component integrating Material UI components for a modern interface.
 // Manages file uploading, API key handling, PDF processing, and markdown preview with responsive layout.
 
-import React, { useState, useCallback } from 'react';
-import { 
+import React, { useState, useCallback } from "react";
+import {
   AppBar,
   Toolbar,
   Typography,
@@ -11,29 +11,28 @@ import {
   Paper,
   Divider,
   Button,
-  useTheme
-} from '@mui/material';
-import FileUploader from './components/FileUploader';
-import ApiKeyManager from './components/ApiKeyManager';
-import ProcessingStatus from './components/ProcessingStatus';
-import MarkdownPreview from './components/MarkdownPreview';
-import { 
-  PdfFile, 
-  ProgressUpdate, 
-  PdfToMdResult 
-} from '../types/interfaces';
-import { webProgressReporter } from '../adapters/web/progress-reporter';
-import { pdfToMdService } from '../core/pdf-to-md';
+  useTheme,
+} from "@mui/material";
+import FileUploader from "./components/FileUploader";
+import ApiKeyManager from "./components/ApiKeyManager";
+import ProcessingStatus from "./components/ProcessingStatus";
+import MarkdownPreview from "./components/MarkdownPreview";
+import { PdfFile, ProgressUpdate, PdfToMdResult } from "../types/interfaces";
+import { webProgressReporter } from "../adapters/web/progress-reporter";
+import { pdfToMdService } from "../core/pdf-to-md";
 
 const App: React.FC = () => {
   const theme = useTheme();
   const [pdfFile, setPdfFile] = useState<PdfFile | null>(null);
-  const [apiKey, setApiKey] = useState<string>('');
+  const [apiKey, setApiKey] = useState<string>("");
   const [isApiKeyValid, setIsApiKeyValid] = useState<boolean>(false);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [processingError, setProcessingError] = useState<Error | null>(null);
-  const [progressUpdate, setProgressUpdate] = useState<ProgressUpdate | null>(null);
-  const [conversionResult, setConversionResult] = useState<PdfToMdResult | null>(null);
+  const [progressUpdate, setProgressUpdate] = useState<ProgressUpdate | null>(
+    null
+  );
+  const [conversionResult, setConversionResult] =
+    useState<PdfToMdResult | null>(null);
 
   // Handle API key changes
   const handleApiKeyChange = (key: string) => {
@@ -53,7 +52,7 @@ const App: React.FC = () => {
     // Clear any existing listeners
     webProgressReporter.removeProgressListener(setProgressUpdate);
     webProgressReporter.removeErrorListener(handleProcessingError);
-    
+
     // Add new listeners
     webProgressReporter.addProgressListener(setProgressUpdate);
     webProgressReporter.addErrorListener(handleProcessingError);
@@ -76,22 +75,22 @@ const App: React.FC = () => {
       setProcessingError(null);
       setConversionResult(null);
       setupProgressReporting();
-      
+
       const result = await pdfToMdService.convertPdfToMarkdown(
         pdfFile,
         apiKey,
         { includeImageBase64: true },
-        { 
-          addPageNumbers: true, 
+        {
+          addPageNumbers: true,
           addPageSeparators: true,
           normalizeLineBreaks: true,
           extractImageReferences: true,
           processImages: true,
-          keepOriginalImages: false
+          keepOriginalImages: false,
         },
         webProgressReporter
       );
-      
+
       setConversionResult(result);
       setIsProcessing(false);
     } catch (error) {
@@ -114,10 +113,14 @@ const App: React.FC = () => {
   }, []);
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+    <Box sx={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
       <AppBar position="static" color="primary">
         <Toolbar>
-          <Typography variant="h1" component="h1" sx={{ flexGrow: 1, fontSize: '2rem' }}>
+          <Typography
+            variant="h1"
+            component="h1"
+            sx={{ flexGrow: 1, fontSize: "2rem" }}
+          >
             paper2llm
           </Typography>
           <Typography variant="body1">
@@ -125,14 +128,14 @@ const App: React.FC = () => {
           </Typography>
         </Toolbar>
       </AppBar>
-      
-      <Box 
-        component="main" 
-        sx={{ 
+
+      <Box
+        component="main"
+        sx={{
           flex: 1,
           py: 4,
           px: { xs: 2, md: 4 },
-          bgcolor: 'background.default' 
+          bgcolor: "background.default",
         }}
       >
         <Container maxWidth="md">
@@ -140,17 +143,17 @@ const App: React.FC = () => {
             <Box mb={4}>
               <ApiKeyManager onApiKeyChange={handleApiKeyChange} />
             </Box>
-            
+
             <Divider sx={{ my: 3 }} />
-            
+
             {isApiKeyValid && !conversionResult && (
               <Box mb={4}>
                 <FileUploader onFileSelected={handleFileSelected} />
-                
+
                 {pdfFile && !isProcessing && (
                   <Box sx={{ mt: 3 }}>
-                    <Button 
-                      variant="contained" 
+                    <Button
+                      variant="contained"
                       color="secondary"
                       fullWidth
                       onClick={startConversion}
@@ -160,21 +163,22 @@ const App: React.FC = () => {
                     </Button>
                     <Paper variant="outlined" sx={{ p: 2 }}>
                       <Typography variant="body1">
-                        <strong>File:</strong> {pdfFile.name} ({Math.round(pdfFile.size / 1024)} KB)
+                        <strong>File:</strong> {pdfFile.name} (
+                        {Math.round(pdfFile.size / 1024)} KB)
                       </Typography>
                     </Paper>
                   </Box>
                 )}
               </Box>
             )}
-            
+
             {!isApiKeyValid && (
-              <Paper 
-                sx={{ 
-                  p: 3, 
-                  bgcolor: 'background.default',
-                  borderLeft: '4px solid',
-                  borderColor: 'primary.main'
+              <Paper
+                sx={{
+                  p: 3,
+                  bgcolor: "background.default",
+                  borderLeft: "4px solid",
+                  borderColor: "primary.main",
                 }}
               >
                 <Typography variant="body1">
@@ -183,9 +187,9 @@ const App: React.FC = () => {
                 </Typography>
               </Paper>
             )}
-            
+
             <Box mb={4}>
-              <ProcessingStatus 
+              <ProcessingStatus
                 isProcessing={isProcessing}
                 currentProgress={progressUpdate}
                 error={processingError}
@@ -193,10 +197,10 @@ const App: React.FC = () => {
                 onRetry={startConversion}
               />
             </Box>
-            
+
             {conversionResult && (
               <Box>
-                <MarkdownPreview 
+                <MarkdownPreview
                   result={conversionResult}
                   onNewConversion={handleNewConversion}
                 />
@@ -205,21 +209,62 @@ const App: React.FC = () => {
           </Paper>
         </Container>
       </Box>
-      
-      <Box 
-        component="footer" 
-        sx={{ 
-          py: 2,
-          textAlign: 'center',
-          bgcolor: 'background.paper',
+
+      <Box
+        component="footer"
+        sx={{
+          py: 0.5,
+          textAlign: "center",
+          bgcolor: "background.paper",
           borderTop: 1,
-          borderColor: 'divider',
-          color: 'text.secondary',
-          fontSize: '0.875rem'
+          borderColor: "divider",
+          color: "text.secondary",
+          fontSize: "0.875rem",
+          position: "sticky",
+          bottom: 0,
+          width: "100%",
+          mt: "auto",
         }}
       >
-        <Typography variant="body2">
-          © 2025 paper2llm - MIT License
+        <Typography variant="body2" sx={{ mb: 1 }}>
+          © 2025 paper2llm - MIT License - Developed by{" "}
+          <a
+            href="https://lacerbi.github.io/"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: theme.palette.primary.main }}
+          >
+            Luigi Acerbi
+          </a>{" "}
+          |
+          <a
+            href="https://www.helsinki.fi/en/researchgroups/machine-and-human-intelligence"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: theme.palette.primary.main }}
+          >
+            {" "}
+            Machine & Human Intelligence Group
+          </a>{" "}
+          - Follow on{" "}
+          <a
+            href="https://x.com/AcerbiLuigi"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: theme.palette.primary.main }}
+          >
+            X
+          </a>{" "}
+          |
+          <a
+            href="https://bsky.app/profile/lacerbi.bsky.social"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: theme.palette.primary.main }}
+          >
+            {" "}
+            Bluesky
+          </a>
         </Typography>
       </Box>
     </Box>
