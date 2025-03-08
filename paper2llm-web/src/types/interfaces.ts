@@ -208,6 +208,8 @@ export interface MarkdownOptions {
   addPageSeparators?: boolean;
   normalizeLineBreaks?: boolean;
   extractImageReferences?: boolean;
+  processImages?: boolean;
+  keepOriginalImages?: boolean;
 }
 
 /**
@@ -240,5 +242,38 @@ export interface PdfToMdResult {
  * Interface for image description service
  */
 export interface ImageService {
-  describeImage(image: OcrImage, context: string, apiKey: string): Promise<string>;
+  /**
+   * Describes an image using the Vision API
+   * 
+   * @param image OcrImage object containing image data
+   * @param apiKey Mistral API key
+   * @param contextText Optional context to include with the image
+   * @returns Promise resolving to the image description
+   */
+  describeImage(
+    image: OcrImage,
+    apiKey: string,
+    contextText?: string
+  ): Promise<string>;
+  
+  /**
+   * Describes multiple images in batch
+   * 
+   * @param images Array of OcrImage objects
+   * @param apiKey Mistral API key
+   * @param contextMap Optional map of image IDs to context text
+   * @param progressReporter Optional progress reporter
+   * @returns Promise resolving to a map of image IDs to descriptions
+   */
+  describeImages(
+    images: OcrImage[],
+    apiKey: string,
+    contextMap?: Map<string, string>,
+    progressReporter?: ProgressReporter
+  ): Promise<Map<string, string>>;
+  
+  /**
+   * Cancels an ongoing operation if possible
+   */
+  cancelOperation(): void;
 }

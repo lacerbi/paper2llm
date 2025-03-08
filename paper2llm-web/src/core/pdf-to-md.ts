@@ -1,5 +1,5 @@
 // AI Summary: Main orchestration pipeline for converting PDFs to Markdown.
-// Coordinates file handling, OCR processing, and Markdown generation with progress tracking.
+// Coordinates file handling, OCR processing, image description, and Markdown generation with progress tracking.
 
 import { 
   PdfFile, 
@@ -10,6 +10,7 @@ import {
 } from '../types/interfaces';
 import { mistralOcrService } from './ocr-service';
 import { markdownProcessor } from './markdown-processor';
+import { mistralImageService } from './image-service';
 
 export class PdfToMdService {
   /**
@@ -43,7 +44,7 @@ export class PdfToMdService {
       if (progressReporter) {
         progressReporter.reportProgress({
           stage: 'processing-markdown',
-          progress: 95,
+          progress: 50,
           message: 'Processing OCR results into enhanced Markdown'
         });
       }
@@ -53,7 +54,54 @@ export class PdfToMdService {
         markdownOptions
       );
       
-      // Step 3: Return the combined result
+      // Step 3: Process images if enabled
+      let enhancedMarkdown = markdownResult.markdown;
+      
+      if (markdownOptions.processImages && ocrResult.pages.some(page => page.images.length > 0)) {
+        if (progressReporter) {
+          progressReporter.reportProgress({
+            stage: 'processing-images',
+            progress: 60,
+            message: 'Processing images with Vision AI',
+            detail: 'Extracting image contexts and preparing for description'
+          });
+        }
+        
+        // Collect all images from all pages
+        const allImages = ocrResult.pages.flatMap(page => page.images);
+        
+        // Only proceed if there are images to process
+        if (allImages.length > 0) {
+          // Build context map for all images
+          const contextMap = markdownProcessor.buildImageContextMap(ocrResult.pages);
+          
+          // Process all images to get descriptions
+          const imageDescriptions = await mistralImageService.describeImages(
+            allImages,
+            apiKey,
+            contextMap,
+            progressReporter
+          );
+          
+          if (progressReporter) {
+            progressReporter.reportProgress({
+              stage: 'enhancing-markdown',
+              progress: 85,
+              message: 'Enhancing Markdown with image descriptions',
+              detail: `Processed ${imageDescriptions.size} images`
+            });
+          }
+          
+          // Enhance markdown with image descriptions
+          enhancedMarkdown = markdownProcessor.enhanceImageReferences(
+            markdownResult.markdown,
+            imageDescriptions,
+            markdownOptions
+          );
+        }
+      }
+      
+      // Step 4: Return the combined result
       if (progressReporter) {
         progressReporter.reportProgress({
           stage: 'completed',
@@ -62,8 +110,9 @@ export class PdfToMdService {
         });
       }
       
-      return {
-        markdown: markdownResult.markdown,
+      // Create the final result with either the original or enhanced markdown
+      const finalResult: PdfToMdResult = {
+        markdown: enhancedMarkdown,
         ocrResult,
         markdownResult,
         sourceFile: {
@@ -74,6 +123,8 @@ export class PdfToMdService {
         },
         timestamp: new Date().toISOString()
       };
+      
+      return finalResult;
     } catch (error) {
       // Re-throw with more context
       throw new Error(`PDF to Markdown conversion failed: ${(error as Error).message}`);
@@ -85,6 +136,7 @@ export class PdfToMdService {
    */
   public cancelOperation(): void {
     mistralOcrService.cancelOperation();
+    mistralImageService.cancelOperation();
   }
 }
 
