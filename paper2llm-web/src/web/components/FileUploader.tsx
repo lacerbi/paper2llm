@@ -1,6 +1,6 @@
-// AI Summary: React component for PDF file uploading with drag-and-drop support.
-// Handles both file uploads and URL inputs with validation and error messaging.
-// Now uses Material UI components for consistent styling.
+// AI Summary: React component for PDF file uploading with responsive layout.
+// Handles both file uploads and URL inputs with validation, combining drag & drop and URL
+// input on the same row for a more compact interface.
 
 import React, { useState, useRef, useCallback, DragEvent, ChangeEvent } from 'react';
 import { 
@@ -14,7 +14,8 @@ import {
   CardContent,
   Alert,
   IconButton, 
-  useTheme
+  useTheme,
+  Grid
 } from '@mui/material';
 import {
   CloudUpload as UploadIcon,
@@ -140,130 +141,171 @@ const FileUploader: React.FC<FileUploaderProps> = ({ onFileSelected }) => {
   };
 
   return (
-    <Box sx={{ mb: 4 }}>
+    <Box sx={{ mb: 3 }}>
       <Typography variant="h5" component="h2" sx={{ mb: 2 }}>
         Upload PDF
       </Typography>
       
-      {/* Drag and Drop Area */}
-      <Paper 
-        elevation={0}
-        sx={{
-          border: '2px dashed',
-          borderColor: state.isDragging ? 'primary.main' : 'divider',
-          borderRadius: 2,
-          p: 3,
-          textAlign: 'center',
-          cursor: 'pointer',
-          bgcolor: state.isDragging ? 'action.hover' : 'background.paper',
-          transition: 'all 0.2s ease',
-          mb: 3
-        }}
-        onDragEnter={handleDragEnter}
-        onDragLeave={handleDragLeave}
-        onDragOver={handleDragOver}
-        onDrop={handleDrop}
-        onClick={handleSelectFile}
-      >
-        <Box sx={{ 
-          display: 'flex', 
-          flexDirection: 'column', 
-          alignItems: 'center',
-          gap: 2 
-        }}>
-          <UploadIcon 
-            color="primary" 
-            sx={{ 
-              fontSize: 48,
-              opacity: state.isDragging ? 1 : 0.8
-            }} 
-          />
-          <Typography>
-            {state.isDragging 
-              ? 'Drop your PDF here' 
-              : 'Drag & drop your PDF here or click to browse'
-            }
-          </Typography>
-          <input 
-            type="file" 
-            ref={fileInputRef}
-            onChange={handleFileChange}
-            accept="application/pdf"
-            style={{ display: 'none' }}
-          />
-        </Box>
-      </Paper>
-
-      <Box sx={{ 
-        display: 'flex', 
-        alignItems: 'center', 
-        my: 3,
-        color: 'text.secondary',
-        '&::before, &::after': {
-          content: '""',
-          flex: 1,
-          borderBottom: '1px solid',
-          borderColor: 'divider'
-        }
-      }}>
-        <Typography 
-          variant="overline" 
-          component="span" 
-          sx={{ 
-            px: 2, 
-            textTransform: 'uppercase',
-            fontWeight: 600,
-            fontSize: '0.75rem'
-          }}
-        >
-          OR
-        </Typography>
-      </Box>
-
-      {/* URL Input Form */}
-      <Box 
-        component="form" 
-        onSubmit={handleUrlSubmit} 
-        sx={{ mb: 3 }}
-      >
-        <Box sx={{ 
-          display: 'flex', 
-          gap: 1,
-          flexDirection: { xs: 'column', sm: 'row' }
-        }}>
-          <TextField
-            fullWidth
-            placeholder="Enter URL to a PDF file"
-            value={state.url}
-            onChange={handleUrlChange}
-            disabled={state.loading}
-            variant="outlined"
-            size="medium"
-            InputProps={{
-              sx: { borderTopRightRadius: { sm: 0 }, borderBottomRightRadius: { sm: 0 } }
+      {/* Compact Layout with Grid */}
+      <Grid container spacing={3} alignItems="stretch">
+        {/* Drag and Drop Area */}
+        <Grid item xs={12} md={5}>
+          <Paper 
+            elevation={0}
+            sx={{
+              border: '2px dashed',
+              borderColor: state.isDragging ? 'primary.main' : 'divider',
+              borderRadius: 2,
+              p: { xs: 2, md: 2 },
+              height: '120px',
+              textAlign: 'center',
+              cursor: 'pointer',
+              bgcolor: state.isDragging ? 'action.hover' : 'background.paper',
+              transition: 'all 0.2s ease',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'center',
+              alignItems: 'center'
             }}
-          />
-          <Button 
-            type="submit" 
-            variant="contained" 
-            disabled={state.loading || !state.url.trim()}
+            onDragEnter={handleDragEnter}
+            onDragLeave={handleDragLeave}
+            onDragOver={handleDragOver}
+            onDrop={handleDrop}
+            onClick={handleSelectFile}
+          >
+            <Box sx={{ 
+              display: 'flex', 
+              flexDirection: 'column', 
+              alignItems: 'center',
+              gap: 1
+            }}>
+              <UploadIcon 
+                color="primary" 
+                sx={{ 
+                  fontSize: { xs: 36, md: 40 },
+                  opacity: state.isDragging ? 1 : 0.8
+                }} 
+              />
+              <Typography variant="body2">
+                {state.isDragging 
+                  ? 'Drop PDF here' 
+                  : 'Drag & drop PDF here or click to browse'
+                }
+              </Typography>
+              <input 
+                type="file" 
+                ref={fileInputRef}
+                onChange={handleFileChange}
+                accept="application/pdf"
+                style={{ display: 'none' }}
+              />
+            </Box>
+          </Paper>
+        </Grid>
+
+        {/* Divider */}
+        <Grid item xs={12} md={1} sx={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'center',
+          py: { xs: 1, md: 0 }
+        }}>
+          <Box sx={{ 
+            display: 'flex', 
+            position: 'relative',
+            justifyContent: 'center',
+            alignItems: 'center',
+            height: 120
+          }}>
+            {/* Mobile divider */}
+            <Divider sx={{ 
+              width: '100%', 
+              display: { xs: 'block', md: 'none' }
+            }} />
+            
+            {/* Desktop divider */}
+            <Divider 
+              orientation="vertical" 
+              sx={{ 
+                height: '100%',
+                display: { xs: 'none', md: 'block' }
+              }} 
+            />
+            
+            {/* OR text */}
+            <Typography 
+              variant="overline" 
+              component="span" 
+              sx={{ 
+                position: { md: 'absolute' },
+                px: 3,
+                py: { xs: 0, md: 0 },
+                backgroundColor: { md: 'background.default' },
+                textTransform: 'uppercase',
+                fontWeight: 600,
+                fontSize: '0.75rem',
+                color: 'text.secondary'
+              }}
+            >
+              OR
+            </Typography>
+          </Box>
+        </Grid>
+
+        {/* URL Input Form */}
+        <Grid item xs={12} md={5}>
+          <Box 
+            component="form" 
+            onSubmit={handleUrlSubmit}
             sx={{ 
-              px: 3,
-              borderTopLeftRadius: { sm: 0 },
-              borderBottomLeftRadius: { sm: 0 },
-              minWidth: { sm: '120px' }
+              height: '120px', 
+              display: 'flex', 
+              flexDirection: 'column', 
+              justifyContent: 'center',
+              alignItems: 'center'
             }}
           >
-            {state.loading ? 'Loading...' : 'Fetch'}
-          </Button>
-        </Box>
-      </Box>
+            <Box sx={{ 
+              display: 'flex', 
+              gap: 1,
+              flexDirection: { xs: 'column', sm: 'row' }
+            }}>
+              <TextField
+                fullWidth
+                size="small"
+                placeholder="Enter URL to a PDF file"
+                value={state.url}
+                onChange={handleUrlChange}
+                disabled={state.loading}
+                variant="outlined"
+                InputProps={{
+                  sx: { borderTopRightRadius: { sm: 0 }, borderBottomRightRadius: { sm: 0 } }
+                }}
+              />
+              <Button 
+                type="submit" 
+                variant="contained" 
+                disabled={state.loading || !state.url.trim()}
+                sx={{ 
+                  px: 2,
+                  py: { xs: 1, sm: 'auto' },
+                  borderTopLeftRadius: { sm: 0 },
+                  borderBottomLeftRadius: { sm: 0 },
+                  minWidth: { sm: '100px' }
+                }}
+              >
+                {state.loading ? 'Loading...' : 'Fetch'}
+              </Button>
+            </Box>
+          </Box>
+        </Grid>
+      </Grid>
 
       {/* Error Message */}
       {state.error && (
         <Alert 
           severity="error" 
-          sx={{ mb: 3 }}
+          sx={{ mt: 2, mb: 2 }}
           variant="outlined"
         >
           {state.error}
@@ -273,13 +315,13 @@ const FileUploader: React.FC<FileUploaderProps> = ({ onFileSelected }) => {
       {/* File Info */}
       {state.file && (
         <Card variant="outlined" sx={{ mt: 3 }}>
-          <CardContent>
-            <Typography variant="h6" gutterBottom>
+          <CardContent sx={{ py: 2, '&:last-child': { pb: 2 } }}>
+            <Typography variant="h6" gutterBottom sx={{ fontSize: '1rem' }}>
               Selected File
             </Typography>
             <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-              <FileIcon sx={{ mr: 1, color: 'primary.main' }} />
-              <Typography variant="body1">
+              <FileIcon sx={{ mr: 1, color: 'primary.main', fontSize: '1.2rem' }} />
+              <Typography variant="body2">
                 <strong>Name:</strong> {state.file.name}
               </Typography>
             </Box>
