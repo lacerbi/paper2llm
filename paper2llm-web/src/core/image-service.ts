@@ -33,6 +33,24 @@ export class MistralImageService implements ImageService {
    * @param contextText Optional context to include with the image
    * @returns Promise resolving to the image description
    */
+  /**
+   * Properly formats image data for the Mistral Vision API
+   * Ensures the base64 prefix is included correctly without duplication
+   * 
+   * @param base64Data Base64 encoded image data
+   * @returns Properly formatted image URL string
+   */
+  private formatImageUrl(base64Data: string): string {
+    // Check if the base64 data already includes the data URI prefix
+    if (base64Data.startsWith('data:image/')) {
+      // Already has proper format, return as is
+      return base64Data;
+    }
+    
+    // Add the proper prefix for JPEG images
+    return `data:image/jpeg;base64,${base64Data}`;
+  }
+  
   async describeImage(
     image: OcrImage,
     apiKey: string,
@@ -45,8 +63,8 @@ export class MistralImageService implements ImageService {
       // Build the prompt for the image description
       const promptText = this.buildImagePrompt(contextText);
       
-      // Prepare the image URL with base64 data
-      const imageUrl = `data:image/jpeg;base64,${image.base64}`;
+      // Prepare the image URL with base64 data, ensuring proper formatting
+      const imageUrl = this.formatImageUrl(image.base64);
       
       // Create the request payload
       const payload = {
@@ -78,7 +96,18 @@ export class MistralImageService implements ImageService {
       };
       
       // Make the API request
-      const response: AxiosResponse<any> = await this.axiosInstance.post('', payload, config);
+      let response: AxiosResponse<any>;
+      try {
+        response = await this.axiosInstance.post('', payload, config);
+      } catch (apiError: any) {
+        // Check for specific error related to image formatting
+        if (apiError.response && apiError.response.status === 422) {
+          // Improve error message for debugging base64 formatting issues
+          const errorMessage = apiError.response.data?.error?.message || 'Unknown API error';
+          throw new Error(`Vision API rejected request (422): ${errorMessage}`);
+        }
+        throw apiError;
+      }
       
       // Extract and return the description from the response
       if (response.data && 
