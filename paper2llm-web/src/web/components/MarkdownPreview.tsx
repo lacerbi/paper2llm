@@ -68,8 +68,15 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
 
   // Calculate image metrics
   const calculateImageMetrics = () => {
-    const originalImageCount = (markdown.match(/!\[.*?\]\(.*?\)/g) || []).length;
+    // Count all markdown image references (standard format)
+    const markdownImageCount = (markdown.match(/!\[.*?\]\(.*?\)/g) || []).length;
+    
+    // Count all images with descriptions 
     const describedImageCount = (markdown.match(/> \*\*Image Description:\*\*/g) || []).length;
+    
+    // Use the larger of the two counts for total images, ensuring describedImageCount is never > originalImageCount
+    // This handles cases where images were processed but aren't in markdown syntax
+    const originalImageCount = Math.max(markdownImageCount, describedImageCount);
     
     return {
       originalImageCount,
