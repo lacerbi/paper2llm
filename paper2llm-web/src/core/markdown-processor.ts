@@ -179,15 +179,18 @@ export class MarkdownProcessor {
         }
 
         if (description) {
+          // Post-process the description: trim whitespace and normalize newlines
+          const processedDescription = description.trim().replace(/\n+/g, ' ');
+
           // Format the replacement based on options
           let replacement = "";
 
           if (options.keepOriginalImages) {
             // Keep the original image reference and add the description
-            replacement = `${match.full}\n\n> **Image Description:** ${description}\n`;
+            replacement = `${match.full}\n\n> **Image Description:** ${processedDescription}\n`;
           } else {
             // Replace the image with just the description
-            replacement = `> **Image Description:** ${description}\n`;
+            replacement = `> **Image Description:** ${processedDescription}\n`;
           }
 
           if (options.debugMode) {
