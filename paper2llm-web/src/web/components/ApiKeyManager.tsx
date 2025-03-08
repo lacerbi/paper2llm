@@ -37,7 +37,11 @@ import {
   Error as ErrorIcon,
   Warning as WarningIcon,
 } from "@mui/icons-material";
-import { ApiKeyManagerState, ApiKeyStorageOptions, ApiKeyExpiration } from "../../types/interfaces";
+import {
+  ApiKeyManagerState,
+  ApiKeyStorageOptions,
+  ApiKeyExpiration,
+} from "../../types/interfaces";
 import { webApiKeyStorage } from "../../adapters/web/api-storage";
 
 interface ApiKeyManagerProps {
@@ -55,14 +59,14 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
     error: null,
     isAuthenticated: false,
   });
-  
+
   // For UI display only - to mask the actual API key
   const [maskedApiKey, setMaskedApiKey] = useState<string>("");
 
   // State for security options
-  const [expiration, setExpiration] = useState<ApiKeyExpiration>("never");
+  const [expiration, setExpiration] = useState<ApiKeyExpiration>("session");
   const [showSecurityInfo, setShowSecurityInfo] = useState<boolean>(false);
-  
+
   // New state for password validation
   const [passwordError, setPasswordError] = useState<string | null>(null);
 
@@ -87,7 +91,7 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
     // Load existing expiration preference if available
     if (isStored) {
       const savedExpiration = webApiKeyStorage.getExpiration();
-      
+
       if (savedExpiration) {
         setExpiration(savedExpiration);
       }
@@ -101,19 +105,19 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
       setState((prevState) => ({ ...prevState, isValid }));
     }
   }, [state.apiKey]);
-  
+
   // Validate password requirements whenever expiration changes
   useEffect(() => {
     // Only validate when we have an API key to store
     if (state.apiKey && !state.isAuthenticated) {
       validatePasswordRequirements();
     }
-    
+
     // Clear password when expiration is set to session
-    if (expiration === 'session' && !state.isAuthenticated) {
-      setState(prev => ({
+    if (expiration === "session" && !state.isAuthenticated) {
+      setState((prev) => ({
         ...prev,
-        password: ""
+        password: "",
       }));
     }
   }, [expiration, state.password, state.apiKey, state.isAuthenticated]);
@@ -123,7 +127,7 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
     if (!key || key.length <= 4) return "••••••••";
     return "•".repeat(key.length);
   };
-  
+
   const getPartiallyMaskedApiKey = (key: string): string => {
     if (!key || key.length <= 4) return key;
     const lastFour = key.slice(-4);
@@ -134,11 +138,13 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
   useEffect(() => {
     if (state.isAuthenticated && state.apiKey) {
       onApiKeyChange(state.apiKey);
-      
+
       // Update masked key for display
-      setMaskedApiKey(state.showPassword 
-        ? getPartiallyMaskedApiKey(state.apiKey) 
-        : getFullyMaskedApiKey(state.apiKey));
+      setMaskedApiKey(
+        state.showPassword
+          ? getPartiallyMaskedApiKey(state.apiKey)
+          : getFullyMaskedApiKey(state.apiKey)
+      );
     } else if (!state.isAuthenticated) {
       onApiKeyChange("");
       setMaskedApiKey("");
@@ -159,7 +165,7 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
       password: e.target.value,
       error: null,
     }));
-    
+
     // Password validation will be triggered by the useEffect
   };
 
@@ -169,12 +175,14 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
       ...prevState,
       showPassword: newShowPassword,
     }));
-    
+
     // Update the masked key if authenticated
     if (state.isAuthenticated && state.apiKey) {
-      setMaskedApiKey(newShowPassword 
-        ? getPartiallyMaskedApiKey(state.apiKey) 
-        : getFullyMaskedApiKey(state.apiKey));
+      setMaskedApiKey(
+        newShowPassword
+          ? getPartiallyMaskedApiKey(state.apiKey)
+          : getFullyMaskedApiKey(state.apiKey)
+      );
     }
   };
 
@@ -184,22 +192,22 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
   };
 
   const toggleSecurityInfo = () => {
-    setShowSecurityInfo(prev => !prev);
+    setShowSecurityInfo((prev) => !prev);
   };
-  
+
   // Validate password based on expiration type
   const validatePasswordRequirements = () => {
     // Clear previous errors
     setPasswordError(null);
-    
+
     // For non-session storage (localStorage), password is required
-    if (expiration !== 'session') {
+    if (expiration !== "session") {
       if (!state.password || state.password.length < 1) {
         setPasswordError("Password is required for persistent storage");
         return false;
       }
     }
-    
+
     return true;
   };
 
@@ -208,18 +216,18 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
     if (!validatePasswordRequirements()) {
       return;
     }
-    
+
     try {
       const options: ApiKeyStorageOptions = {
-        storageType: expiration === 'session' ? 'session' : 'local',
+        storageType: expiration === "session" ? "session" : "local",
         expiration: expiration,
       };
-      
+
       // Only include password if it's provided
       if (state.password) {
         options.password = state.password;
       }
-      
+
       await webApiKeyStorage.storeApiKey(state.apiKey, options);
 
       setState((prevState) => ({
@@ -250,9 +258,11 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
           isAuthenticated: true,
           error: null,
         }));
-        setMaskedApiKey(state.showPassword 
-          ? getPartiallyMaskedApiKey(apiKey) 
-          : getFullyMaskedApiKey(apiKey));
+        setMaskedApiKey(
+          state.showPassword
+            ? getPartiallyMaskedApiKey(apiKey)
+            : getFullyMaskedApiKey(apiKey)
+        );
       } else {
         setState((prevState) => ({
           ...prevState,
@@ -279,7 +289,7 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
       error: null,
       isAuthenticated: false,
     });
-    
+
     // Reset security options to defaults
     setExpiration("never");
     setPasswordError(null);
@@ -305,19 +315,19 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
     } else {
       // For storing a new key
       if (!state.isValid) return false;
-      
+
       // For non-session storage, require password
-      if (expiration !== 'session' && !state.password) return false;
-      
+      if (expiration !== "session" && !state.password) return false;
+
       return true;
     }
   };
 
   // Helper to render the password field with appropriate required status
   const renderPasswordField = () => {
-    const isRequired = expiration !== 'session';
-    const isDisabled = expiration === 'session';
-    
+    const isRequired = expiration !== "session";
+    const isDisabled = expiration === "session";
+
     return (
       <TextField
         id="password"
@@ -325,7 +335,7 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
         type={state.showPassword ? "text" : "password"}
         value={state.password}
         onChange={handlePasswordChange}
-        placeholder={isDisabled ? "Auto-generated for session storage" : "Required for persistent storage"}
+        placeholder={isDisabled ? "Auto-generated" : "Enter password"}
         required={isRequired}
         disabled={isDisabled}
         error={!!passwordError}
@@ -336,7 +346,12 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
         InputProps={{
           startAdornment: (
             <InputAdornment position="start">
-              <LockIcon fontSize="small" color={isDisabled ? "disabled" : (isRequired ? "primary" : "action")} />
+              <LockIcon
+                fontSize="small"
+                color={
+                  isDisabled ? "disabled" : isRequired ? "primary" : "action"
+                }
+              />
             </InputAdornment>
           ),
           endAdornment: !isDisabled && (
@@ -347,7 +362,11 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
                 edge="end"
                 size="small"
               >
-                {state.showPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}
+                {state.showPassword ? (
+                  <VisibilityOffIcon />
+                ) : (
+                  <VisibilityIcon />
+                )}
               </IconButton>
             </InputAdornment>
           ),
@@ -390,7 +409,13 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
               <TextField
                 id="apiKey"
                 label="API Key"
-                type={state.isAuthenticated ? "text" : (state.showPassword ? "text" : "password")}
+                type={
+                  state.isAuthenticated
+                    ? "text"
+                    : state.showPassword
+                    ? "text"
+                    : "password"
+                }
                 value={state.isAuthenticated ? maskedApiKey : state.apiKey}
                 onChange={handleApiKeyChange}
                 placeholder="Enter your Mistral API key"
@@ -461,15 +486,20 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
           {/* Security Options (only shown when not authenticated) */}
           {!state.isAuthenticated && (
             <Box sx={{ mt: 2, mb: 1 }}>
-              <Grid container alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
+              <Grid
+                container
+                alignItems="center"
+                justifyContent="space-between"
+                sx={{ mb: 1 }}
+              >
                 <Grid item>
                   <Stack direction="row" alignItems="center" spacing={1}>
                     <Typography variant="subtitle2">
                       Security Options
                     </Typography>
                     <Tooltip title="Click for more information about security options">
-                      <IconButton 
-                        size="small" 
+                      <IconButton
+                        size="small"
                         color="primary"
                         onClick={toggleSecurityInfo}
                       >
@@ -478,7 +508,7 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
                     </Tooltip>
                   </Stack>
                 </Grid>
-                
+
                 <Grid item>
                   <Stack direction="row" spacing={1} alignItems="center">
                     <Typography variant="body2">
@@ -496,8 +526,8 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
                       <MenuItem value="30days">30 Days</MenuItem>
                       <MenuItem value="never">Never expire</MenuItem>
                     </Select>
-                    
-                    {expiration !== 'session' && (
+
+                    {expiration !== "session" && (
                       <Tooltip title="Password required for persistent storage">
                         <LockIcon color="primary" fontSize="small" />
                       </Tooltip>
@@ -505,41 +535,42 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
                   </Stack>
                 </Grid>
               </Grid>
-              
+
               {showSecurityInfo && (
-                <Alert 
-                  severity="info" 
+                <Alert
+                  severity="info"
                   sx={{ mb: 2 }}
                   onClose={toggleSecurityInfo}
                 >
                   <AlertTitle>Security Information</AlertTitle>
                   <Typography variant="body2" paragraph>
-                    <strong>Storage type:</strong> Controlled by expiration selection:
+                    <strong>Storage type:</strong> Controlled by expiration
+                    selection:
                   </Typography>
                   <Typography variant="body2" paragraph sx={{ pl: 2 }}>
-                    • <strong>Session:</strong> API key stored in session storage and cleared when the browser closes. 
-                    Uses an auto-generated encryption key (no password needed).
+                    • <strong>Session:</strong> API key stored in session
+                    storage and cleared when the browser closes. Uses an
+                    auto-generated encryption key (no password needed).
                   </Typography>
                   <Typography variant="body2" paragraph sx={{ pl: 2 }}>
-                    • <strong>1 Day/7 Days/30 Days/Never:</strong> API key stored in local storage with specified expiration. 
-                    <strong> Password is required</strong> for encryption between browser sessions.
+                    • <strong>1 Day/7 Days/30 Days/Never:</strong> API key
+                    stored in local storage with specified expiration.
+                    <strong> Password is required</strong> for encryption
+                    between browser sessions.
                   </Typography>
                   <Typography variant="body2">
-                    <strong>Expiration:</strong> Determines when stored API keys are automatically cleared.
+                    <strong>Expiration:</strong> Determines when stored API keys
+                    are automatically cleared.
                   </Typography>
                 </Alert>
               )}
-              
+
               {/* Security Warning - only show when using persistent storage without password */}
-              {expiration !== 'session' && !state.password && (
-                <Alert 
-                  severity="warning" 
-                  sx={{ mt: 2 }}
-                  icon={<LockIcon />}
-                >
-                  <AlertTitle>Password Required</AlertTitle>
-                  A password is required when storing API keys persistently. This ensures your API key 
-                  remains securely encrypted between browser sessions.
+              {expiration !== "session" && !state.password && (
+                <Alert severity="warning" sx={{ mt: 2 }} icon={<LockIcon />}>
+                  <AlertTitle>Password Required</AlertTitle>A password is
+                  required when storing API keys persistently. This ensures your
+                  API key remains securely encrypted between browser sessions.
                 </Alert>
               )}
             </Box>
