@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { ProgressUpdate } from '../../types/interfaces';
+import { ImageProcessingError } from '../../core/image-service';
 
 interface ProcessingStatusProps {
   isProcessing: boolean;
@@ -80,6 +81,34 @@ const ProcessingStatus: React.FC<ProcessingStatusProps> = ({
     }
   };
   
+  // Get appropriate icon based on error type
+  const getErrorIcon = (error: Error): string => {
+    if (error instanceof ImageProcessingError) {
+      const errorType = (error as ImageProcessingError).type;
+      switch (errorType) {
+        case 'auth_error':
+          return '🔒'; // Authentication/authorization error
+        case 'format_error':
+          return '🖼️'; // Image format error
+        case 'rate_limit':
+          return '⏱️'; // Rate limiting
+        case 'timeout':
+          return '⌛'; // Timeout
+        case 'server_error':
+          return '🖥️'; // Server error
+        case 'validation_error':
+          return '⚠️'; // Input validation error
+        case 'cancelled':
+          return '🛑'; // Cancelled operation
+        case 'size_error':
+          return '📏'; // File size error
+        default:
+          return '❌'; // Generic error
+      }
+    }
+    return '❌'; // Default error icon
+  };
+  
   return (
     <div className="processing-status">
       {isProcessing && currentProgress && (
@@ -121,10 +150,17 @@ const ProcessingStatus: React.FC<ProcessingStatusProps> = ({
       
       {error && (
         <div className="error-container">
-          <h3>Error Processing PDF</h3>
+          <h3>
+            {getErrorIcon(error)} Error Processing PDF
+          </h3>
           <div className="error-message">
             {error.message}
           </div>
+          {error instanceof ImageProcessingError && (
+            <div className="error-details">
+              Error type: {(error as ImageProcessingError).type}
+            </div>
+          )}
           <div className="actions">
             <button 
               className="retry-button"
