@@ -316,33 +316,29 @@ const FileUploader: React.FC<FileUploaderProps> = ({ onFileSelected }) => {
       {state.file && (
         <Card variant="outlined" sx={{ mt: 3 }}>
           <CardContent sx={{ py: 2, '&:last-child': { pb: 2 } }}>
-            <Typography variant="h6" gutterBottom sx={{ fontSize: '1rem' }}>
-              Selected File
-            </Typography>
             <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
               <FileIcon sx={{ mr: 1, color: 'primary.main', fontSize: '1.2rem' }} />
-              <Typography variant="body2">
-                <strong>Name:</strong> {state.file.name}
+              <Typography variant="h6" component="span" sx={{ fontSize: '1rem' }}>
+                Selected File: {state.file.name}
               </Typography>
             </Box>
             <Typography variant="body2" sx={{ mb: 1 }}>
-              <strong>Size:</strong> {(state.file.size / 1024 / 1024).toFixed(2)} MB
-            </Typography>
-            <Typography variant="body2">
-              <strong>Source:</strong> {state.file.source === 'upload' ? 'Local Upload' : 'URL'}
+              <strong>Size:</strong> {state.file.source === 'url' ? 'N/A' : `${(state.file.size / 1024 / 1024).toFixed(2)} MB`} | 
+              <strong> Source:</strong> {state.file.source === 'upload' ? 'Local Upload' : 'URL'}
               {state.file.originalUrl && (
-                <Typography 
-                  component="span" 
-                  sx={{ 
-                    display: 'block',
-                    color: 'text.secondary',
-                    fontSize: '0.875rem',
-                    mt: 0.5,
+                <> | <a 
+                  href={state.file.originalUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ 
+                    color: theme.palette.primary.main,
+                    textDecoration: 'none',
                     wordBreak: 'break-all'
                   }}
                 >
                   {state.file.originalUrl}
-                </Typography>
+                </a>
+                </>
               )}
             </Typography>
           </CardContent>
