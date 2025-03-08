@@ -359,7 +359,7 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
           sx={{ 
             p: 3, 
             bgcolor: 'background.default', 
-            maxHeight: '60vh', 
+            maxHeight: '72vh', /* Increased height by 20% (from 60vh to 72vh) */
             overflow: 'auto',
             borderRadius: 1
           }}
@@ -371,27 +371,22 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
       </TabPanel>
       
       <TabPanel value={tabValue} index={1}>
-        <Box sx={{ mb: 2 }}>
-          <Typography variant="h6" component="h3" sx={{ mb: 1 }}>
-            Markdown Source
-          </Typography>
-          <Paper
-            variant="outlined"
-            sx={{ 
-              p: 2, 
-              bgcolor: 'rgba(0, 0, 0, 0.03)', 
-              maxHeight: '60vh', 
-              overflow: 'auto',
-              borderRadius: 1,
-              fontFamily: 'monospace',
-              fontSize: '0.875rem',
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-word'
-            }}
-          >
-            {markdown}
-          </Paper>
-        </Box>
+        <Paper
+          variant="outlined"
+          sx={{ 
+            p: 2, 
+            bgcolor: 'rgba(0, 0, 0, 0.03)', 
+            maxHeight: '72vh', /* Increased height by 20% (from 60vh to 72vh) */
+            overflow: 'auto',
+            borderRadius: 1,
+            fontFamily: 'monospace',
+            fontSize: '0.875rem',
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word'
+          }}
+        >
+          {markdown}
+        </Paper>
       </TabPanel>
       
       <Snackbar
