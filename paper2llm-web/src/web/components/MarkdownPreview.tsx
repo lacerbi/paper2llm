@@ -15,6 +15,7 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
   onNewConversion
 }) => {
   const [copySuccess, setCopySuccess] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'rendered' | 'source'>('rendered');
   
   if (!result) {
     return null;
@@ -64,9 +65,85 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
       return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
     }
   };
+
+  // Calculate image metrics
+  const calculateImageMetrics = () => {
+    const originalImageCount = (markdown.match(/!\[.*?\]\(.*?\)/g) || []).length;
+    const describedImageCount = (markdown.match(/> \*\*Image Description:\*\*/g) || []).length;
+    
+    return {
+      originalImageCount,
+      describedImageCount,
+      hasProcessedImages: describedImageCount > 0
+    };
+  };
+  
+  const imageMetrics = calculateImageMetrics();
+  
+  // Custom components for ReactMarkdown
+  const components = {
+    blockquote: ({ node, ...props }: any) => {
+      // Check if this is an image description blockquote
+      const isImageDescription = props.children && 
+                                props.children.toString().includes('Image Description');
+      
+      return (
+        <blockquote 
+          className={isImageDescription ? 'image-description-quote' : 'blockquote'}
+          {...props}
+        />
+      );
+    }
+  };
+  
+  // Add some custom styles for image descriptions
+  const customStyles = `
+    .image-description-quote {
+      background-color: #f0f8ff;
+      border-left: 4px solid #4682b4;
+      padding: 10px 15px;
+      margin: 10px 0;
+      border-radius: 0 4px 4px 0;
+    }
+    
+    .view-mode-selector {
+      display: flex;
+      margin-bottom: 15px;
+    }
+    
+    .view-mode-button {
+      padding: 5px 10px;
+      border: 1px solid #ddd;
+      background: #f5f5f5;
+      cursor: pointer;
+    }
+    
+    .view-mode-button.active {
+      background: #e0e0e0;
+      font-weight: bold;
+    }
+    
+    .view-mode-button:first-child {
+      border-radius: 4px 0 0 4px;
+    }
+    
+    .view-mode-button:last-child {
+      border-radius: 0 4px 4px 0;
+    }
+    
+    .image-metrics {
+      margin-top: 10px;
+      background-color: #f8f8f8;
+      padding: 8px;
+      border-radius: 4px;
+      font-size: 0.9em;
+    }
+  `;
   
   return (
     <div className="markdown-preview">
+      <style>{customStyles}</style>
+      
       <div className="preview-header">
         <h2>Converted Markdown</h2>
         <div className="preview-actions">
@@ -104,17 +181,49 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
         <div className="metadata-item">
           <strong>OCR Model:</strong> {markdownResult.model}
         </div>
+        
+        {(imageMetrics.originalImageCount > 0 || imageMetrics.describedImageCount > 0) && (
+          <div className="image-metrics">
+            {imageMetrics.hasProcessedImages ? (
+              <div>
+                <strong>Images processed:</strong> {imageMetrics.describedImageCount} of {imageMetrics.originalImageCount} images have AI-generated descriptions
+              </div>
+            ) : (
+              <div>
+                <strong>Images:</strong> {imageMetrics.originalImageCount} images detected 
+                {imageMetrics.originalImageCount > 0 ? " (no AI descriptions generated)" : ""}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+      
+      <div className="view-mode-selector">
+        <button 
+          className={`view-mode-button ${viewMode === 'rendered' ? 'active' : ''}`}
+          onClick={() => setViewMode('rendered')}
+        >
+          Rendered View
+        </button>
+        <button 
+          className={`view-mode-button ${viewMode === 'source' ? 'active' : ''}`}
+          onClick={() => setViewMode('source')}
+        >
+          Source View
+        </button>
       </div>
       
       <div className="markdown-container">
-        <div className="rendered-markdown">
-          <ReactMarkdown>{markdown}</ReactMarkdown>
-        </div>
-        
-        <div className="markdown-source">
-          <h3>Markdown Source</h3>
-          <pre>{markdown}</pre>
-        </div>
+        {viewMode === 'rendered' ? (
+          <div className="rendered-markdown">
+            <ReactMarkdown components={components}>{markdown}</ReactMarkdown>
+          </div>
+        ) : (
+          <div className="markdown-source">
+            <h3>Markdown Source</h3>
+            <pre>{markdown}</pre>
+          </div>
+        )}
       </div>
     </div>
   );

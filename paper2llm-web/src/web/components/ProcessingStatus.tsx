@@ -69,6 +69,10 @@ const ProcessingStatus: React.FC<ProcessingStatusProps> = ({
         return '⬇️';
       case 'processing-markdown':
         return '📝';
+      case 'processing-images':
+        return '🖼️';
+      case 'enhancing-markdown':
+        return '✨';
       case 'completed':
         return '✅';
       default:

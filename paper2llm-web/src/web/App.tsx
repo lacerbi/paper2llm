@@ -74,7 +74,9 @@ const App: React.FC = () => {
           addPageNumbers: true, 
           addPageSeparators: true,
           normalizeLineBreaks: true,
-          extractImageReferences: true
+          extractImageReferences: true,
+          processImages: true,
+          keepOriginalImages: false
         },
         webProgressReporter
       );

@@ -141,6 +141,16 @@ export class MistralImageService implements ImageService {
     const totalImages = images.length;
     
     try {
+      // Report starting the image processing
+      if (progressReporter) {
+        progressReporter.reportProgress({
+          stage: 'processing-images',
+          progress: 0,
+          message: `Starting image description for ${totalImages} images`,
+          detail: `Preparing to process ${totalImages} images with Vision AI`
+        });
+      }
+      
       // Process each image sequentially
       for (let i = 0; i < totalImages; i++) {
         const image = images[i];
@@ -152,7 +162,7 @@ export class MistralImageService implements ImageService {
             stage: 'processing-images',
             progress: Math.round((i / totalImages) * 100),
             message: `Processing image ${i + 1} of ${totalImages}`,
-            detail: `Image ID: ${image.id}`
+            detail: `Image ID: ${image.id}${context ? ' (with context)' : ''}`
           });
         }
         
@@ -160,6 +170,11 @@ export class MistralImageService implements ImageService {
           // Get description for the image
           const description = await this.describeImage(image, apiKey, context);
           results.set(image.id, description);
+          
+          // Add a small delay between API calls to avoid rate limiting
+          if (i < totalImages - 1) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+          }
         } catch (error: any) {
           // Log error but continue processing other images
           console.error(`Error processing image ${image.id}:`, error.message);
@@ -198,13 +213,16 @@ export class MistralImageService implements ImageService {
    * @returns Formatted prompt string
    */
   private buildImagePrompt(contextText?: string): string {
-    let prompt = 'Please describe this image in detail, including all visible elements, text, and relevant information.';
+    let prompt = 'Please describe this image in detail, focusing on all visible elements, text, and relevant information.';
     
     // Add specific instructions for scholarly/technical content
     prompt += ' If this appears to be from an academic or technical document, focus on describing charts, figures, diagrams, or technical illustrations with precise detail about data points, trends, labels, and their relationships.';
     
     // Add instructions for OCR if text is visible
-    prompt += ' If the image contains text, include transcription of all visible text.';
+    prompt += ' If the image contains text, include a complete transcription of all visible text, preserving the layout and structure where relevant.';
+    
+    // Add specific guidance for common academic figure types
+    prompt += ' For graphs, describe the axes, data series, trends, and key findings. For diagrams, explain the components, connections, and overall meaning. For tables, describe the structure and summarize key information.';
     
     // Add context-specific instructions
     if (contextText) {
@@ -212,7 +230,7 @@ export class MistralImageService implements ImageService {
     }
     
     // Add formatting guidance
-    prompt += ' Format your response as a clear, concise paragraph without using phrases like "The image shows" or "I can see" - simply describe what is present.';
+    prompt += ' Format your response as a clear, concise paragraph. Start with a overview sentence identifying the type of image (e.g., "A line graph showing...", "A diagram illustrating...", "A photograph of..."), then provide specific details.';
     
     return prompt;
   }
@@ -250,10 +268,15 @@ export class MistralImageService implements ImageService {
       
       // Check for headers or captions (potential context indicators)
       if (line.startsWith('#') || 
-          line.startsWith('Figure') || 
-          line.startsWith('Table') || 
-          line.startsWith('_Figure') || 
-          line.startsWith('_Table')) {
+          line.includes('Figure') || 
+          line.includes('Table') || 
+          line.includes('Chart') ||
+          line.includes('Graph') ||
+          line.includes('Diagram') ||
+          line.includes('Image') ||
+          line.includes('Photo') ||
+          line.includes('Caption') ||
+          line.includes('illustrat')) {
         contextLines.push(line);
       }
     }

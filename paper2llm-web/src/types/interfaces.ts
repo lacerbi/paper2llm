@@ -210,6 +210,7 @@ export interface MarkdownOptions {
   extractImageReferences?: boolean;
   processImages?: boolean;
   keepOriginalImages?: boolean;
+  debugMode?: boolean;
 }
 
 /**
