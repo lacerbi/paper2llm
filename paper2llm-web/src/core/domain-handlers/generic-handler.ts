@@ -195,9 +195,20 @@ export function createOpenReviewConfig(): RepositoryConfig {
     ],
     pdfTransformRules: [
       {
-        // Convert forum URLs to PDF URLs
-        pattern: /\/forum/,
-        replacement: '/pdf'
+        // Convert URLs to PDF URLs while preserving query parameters
+        pattern: /\/(forum|attachment)/,
+        replacement: (match, urlObj) => {
+          // Ensure we convert to /pdf endpoint while preserving all query parameters
+          return '/pdf';
+        }
+      },
+      {
+        // Handle URLs that are already PDF URLs but may need query parameter fixing
+        pattern: /\/pdf/,
+        replacement: (match, urlObj) => {
+          // Keep as is, already a PDF URL
+          return '/pdf';
+        }
       }
     ],
     filenameRules: [

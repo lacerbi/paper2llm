@@ -256,7 +256,25 @@ export class WebFileHandler implements FileHandler {
    */
   validateUrl(url: string): boolean {
     try {
-      new URL(url); // This will throw if the URL is not valid
+      const urlObj = new URL(url); // This will throw if the URL is not valid
+      
+      // Special validation for OpenReview URLs
+      if (url.includes('openreview.net')) {
+        // For OpenReview, we need an ID parameter
+        const hasId = urlObj.searchParams.has('id');
+        if (!hasId) {
+          console.warn(`OpenReview URL is missing required 'id' parameter: ${url}`);
+          return false;
+        }
+        
+        const id = urlObj.searchParams.get('id');
+        if (!id || id.trim() === '') {
+          console.warn(`OpenReview URL has empty 'id' parameter: ${url}`);
+          return false;
+        }
+        
+        return true;
+      }
       
       // If it's a URL we can handle with a domain handler, it's valid
       if (domainHandlerRegistry.getHandler(url)) {

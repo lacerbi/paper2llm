@@ -69,8 +69,9 @@ export class MistralOcrService implements OcrService {
         throw new Error('Invalid file source or missing URL');
       }
     } catch (error) {
-      // Handle and transform error
-      const processedError = this.handleError(error as Error | AxiosError);
+      // Handle and transform error - passing the URL if we have it
+      const sourceUrl = file.originalUrl || '';
+      const processedError = this.handleError(error as Error | AxiosError, sourceUrl);
       
       if (progressReporter) {
         progressReporter.reportError(processedError, 'ocr-processing');
@@ -163,8 +164,8 @@ export class MistralOcrService implements OcrService {
       
       return ocrResult;
     } catch (error) {
-      // Handle and transform error
-      const processedError = this.handleError(error as Error | AxiosError);
+      // Handle and transform error with the URL for context
+      const processedError = this.handleError(error as Error | AxiosError, url);
       
       if (progressReporter) {
         progressReporter.reportError(processedError, 'ocr-processing');
@@ -410,8 +411,8 @@ export class MistralOcrService implements OcrService {
       
       return ocrResult;
     } catch (error) {
-      // Handle and transform error
-      const processedError = this.handleError(error as Error | AxiosError);
+      // Handle and transform error with URL context
+      const processedError = this.handleError(error as Error | AxiosError, url);
       
       if (progressReporter) {
         progressReporter.reportError(processedError, 'ocr-processing');
@@ -461,8 +462,13 @@ export class MistralOcrService implements OcrService {
   
   /**
    * Handles and transforms API errors into user-friendly errors
+   * @param error The original error
+   * @param url Optional URL being processed, used for domain-specific error messages
    */
-  private handleError(error: Error | AxiosError): Error {
+  private handleError(error: Error | AxiosError, url?: string): Error {
+    // Check for domain-specific errors
+    const isOpenReview = url?.includes('openreview.net');
+    
     if (axios.isAxiosError(error)) {
       // Handle Axios errors (API errors)
       if (error.response) {
@@ -473,15 +479,29 @@ export class MistralOcrService implements OcrService {
         if (statusCode === 401) {
           return new Error('Invalid API key or unauthorized access');
         } else if (statusCode === 400) {
+          if (isOpenReview) {
+            return new Error(`Failed to process OpenReview PDF. Please check that the paper ID is correct and the paper is publicly accessible.`);
+          }
           return new Error(`Bad request: ${responseData.error?.message || 'Invalid parameters'}`);
+        } else if (statusCode === 404) {
+          if (isOpenReview) {
+            return new Error(`OpenReview paper not found. Please check that the paper ID is correct and the paper is publicly accessible.`);
+          }
+          return new Error(`PDF not found at the specified URL. Please check the URL and try again.`);
         } else if (statusCode === 413) {
           return new Error('File too large for OCR processing');
         } else if (statusCode === 429) {
           return new Error('Rate limit exceeded. Please try again later');
         } else if (statusCode >= 500) {
+          if (isOpenReview) {
+            return new Error(`OpenReview service or PDF access issue. Please try a direct PDF URL if available or check that the paper is publicly accessible.`);
+          }
           return new Error('OCR service temporarily unavailable. Please try again later');
         }
         
+        if (isOpenReview) {
+          return new Error(`OpenReview PDF processing failed: ${responseData.error?.message || 'Could not access or process the PDF'}`);
+        }
         return new Error(`OCR processing failed: ${responseData.error?.message || 'Unknown API error'}`);
       } else if (error.request) {
         // The request was made but no response was received
@@ -489,11 +509,22 @@ export class MistralOcrService implements OcrService {
           return new Error('OCR request timed out. Please try with a smaller file or check your network connection');
         }
         
+        if (isOpenReview) {
+          return new Error('Unable to connect to OpenReview or OCR service. This may be due to access restrictions on the paper or network issues.');
+        }
         return new Error('No response from OCR service. Please check your network connection');
       }
       
       // Something else happened in setting up the request
+      if (isOpenReview) {
+        return new Error(`OpenReview PDF request failed: ${error.message}`);
+      }
       return new Error(`OCR request failed: ${error.message}`);
+    }
+    
+    // For non-Axios errors with domain-specific context
+    if (isOpenReview && error.message.includes('Failed to fetch')) {
+      return new Error('Unable to access OpenReview PDF. The paper may be private or require authentication.');
     }
     
     // For non-Axios errors, just pass through
