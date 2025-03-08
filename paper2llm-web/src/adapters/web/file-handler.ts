@@ -1,119 +1,15 @@
 // AI Summary: Provides browser-specific file handling for PDFs. Handles reading files,
 // validating PDFs, and fetching files from URLs with error handling and mime type checking.
-// Now includes content-type checking via HEAD requests and a domain handler system for extensibility.
+// Uses the domain handler registry to support multiple academic repositories.
 
-import { FileHandler, PdfFile } from '../../types/interfaces';
-
-/**
- * Domain-specific handler interface for PDF URL processing
- */
-interface DomainHandler {
-  /**
-   * Determines if this handler can process a given URL
-   */
-  canHandle(url: string): boolean;
-  
-  /**
-   * Normalizes a URL to ensure it properly points to a PDF
-   */
-  normalizePdfUrl(url: string): string;
-  
-  /**
-   * Generates a filename from the URL
-   */
-  getFileName(url: string): string;
-}
+import { FileHandler, PdfFile, DomainHandler } from '../../types/interfaces';
+import { domainHandlerRegistry } from '../../core/domain-handler-registry';
 
 /**
  * Implements the FileHandler interface for web browsers
  */
 export class WebFileHandler implements FileHandler {
-  private domainHandlers: DomainHandler[] = [];
   
-  constructor() {
-    this.initializeDomainHandlers();
-  }
-  
-  /**
-   * Initializes the domain handlers registry
-   */
-  private initializeDomainHandlers() {
-    // ArXiv handler
-    this.registerDomainHandler({
-      canHandle(url: string): boolean {
-        try {
-          const urlObj = new URL(url);
-          if (!urlObj.hostname.includes('arxiv.org')) {
-            return false;
-          }
-          
-          const pathname = urlObj.pathname;
-          // Check for /abs/, /pdf/, or /html/ formats
-          return /\/(abs|pdf|html)\/(\d+\.\d+|[\w-]+\/\d+)/.test(pathname);
-        } catch (e) {
-          return false;
-        }
-      },
-      
-      normalizePdfUrl(url: string): string {
-        try {
-          const urlObj = new URL(url);
-          const pathname = urlObj.pathname;
-          
-          // Convert /abs/ or /html/ to /pdf/
-          if (pathname.includes('/abs/') || pathname.includes('/html/')) {
-            return url.replace(/\/(abs|html)\//, '/pdf/') + '.pdf';
-          }
-          
-          // If already a PDF URL, just return it
-          if (pathname.includes('/pdf/')) {
-            // Ensure it ends with .pdf
-            return pathname.endsWith('.pdf') ? url : url + '.pdf';
-          }
-          
-          return url;
-        } catch (e) {
-          return url;
-        }
-      },
-      
-      getFileName(url: string): string {
-        try {
-          const urlObj = new URL(url);
-          const pathname = urlObj.pathname;
-          
-          // Extract paper ID from /abs/, /pdf/, or /html/ URLs
-          const arxivPattern = /\/(abs|pdf|html)\/([\w.-]+\/?\d+|\d+\.\d+)/;
-          const match = pathname.match(arxivPattern);
-          
-          if (match) {
-            return `arxiv-${match[2]}.pdf`;
-          }
-          
-          return `arxiv-paper-${new Date().toISOString().slice(0, 10)}.pdf`;
-        } catch (e) {
-          return `arxiv-paper-${new Date().toISOString().slice(0, 10)}.pdf`;
-        }
-      }
-    });
-    
-    // Additional domain handlers can be registered here in the future
-  }
-  
-  /**
-   * Registers a new domain handler
-   */
-  private registerDomainHandler(handler: DomainHandler) {
-    this.domainHandlers.push(handler);
-  }
-  
-  /**
-   * Returns a domain handler that can process the given URL
-   */
-  private getDomainHandler(url: string): DomainHandler | null {
-    return this.domainHandlers.find(handler => handler.canHandle(url)) || null;
-  }
-
   /**
    * Reads a File object and returns a PdfFile
    */
@@ -164,7 +60,7 @@ export class WebFileHandler implements FileHandler {
     }
 
     // Check if we have a domain handler for this URL
-    const domainHandler = this.getDomainHandler(url);
+    const domainHandler = domainHandlerRegistry.getHandler(url);
     
     if (domainHandler) {
       // Normalize the URL for this domain
@@ -285,12 +181,13 @@ export class WebFileHandler implements FileHandler {
   }
 
   /**
-   * Checks if a URL is from arXiv using the domain handler
+   * Checks if a URL is from arXiv using the domain handler registry
    */
   isArxivUrl(url: string): boolean {
     try {
-      const domainHandler = this.getDomainHandler(url);
-      return domainHandler !== null && domainHandler.canHandle(url);
+      const handler = domainHandlerRegistry.getHandler(url);
+      // This maintains backward compatibility by only returning true for arXiv URLs
+      return handler !== null && url.includes('arxiv.org');
     } catch (e) {
       return false;
     }
@@ -312,7 +209,7 @@ export class WebFileHandler implements FileHandler {
       new URL(url); // This will throw if the URL is not valid
       
       // If it's a URL we can handle with a domain handler, it's valid
-      if (this.getDomainHandler(url)) {
+      if (domainHandlerRegistry.getHandler(url)) {
         return true;
       }
       
@@ -329,7 +226,7 @@ export class WebFileHandler implements FileHandler {
   private extractFileNameFromUrl(url: string): string {
     try {
       // Check if we have a domain handler for this URL
-      const domainHandler = this.getDomainHandler(url);
+      const domainHandler = domainHandlerRegistry.getHandler(url);
       if (domainHandler) {
         return domainHandler.getFileName(url);
       }

@@ -243,6 +243,45 @@ export interface PdfToMdResult {
 /**
  * Interface for image description service
  */
+
+/**
+ * Domain-specific handler interface for PDF URL processing
+ */
+export interface DomainHandler {
+  /**
+   * Determines if this handler can process a given URL
+   */
+  canHandle(url: string): boolean;
+  
+  /**
+   * Normalizes a URL to ensure it properly points to a PDF
+   */
+  normalizePdfUrl(url: string): string;
+  
+  /**
+   * Generates a filename from the URL
+   */
+  getFileName(url: string): string;
+}
+
+/**
+ * Registry service for managing domain handlers
+ */
+export interface DomainHandlerRegistry {
+  /**
+   * Registers a new domain handler
+   */
+  registerHandler(handler: DomainHandler): void;
+  
+  /**
+   * Returns a domain handler that can process the given URL
+   */
+  getHandler(url: string): DomainHandler | null;
+}
+
+/**
+ * Service for image description using Vision API
+ */
 export interface ImageService {
   /**
    * Describes an image using the Vision API
