@@ -124,7 +124,8 @@ const App: React.FC = () => {
             paper2llm
           </Typography>
           <Typography variant="body1">
-            Convert papers (as PDFs) into LLM-friendly Markdown files
+            Convert academic PDFs with figures into text-only Markdown — for
+            humans and LLMs
           </Typography>
         </Toolbar>
       </AppBar>
@@ -175,10 +176,39 @@ const App: React.FC = () => {
                 }}
               >
                 <Typography variant="body1" sx={{ mb: 1 }}>
-                  <code>paper2llm</code> uses <a href="https://mistral.ai/en" target="_blank" rel="noopener noreferrer" style={{ color: theme.palette.primary.main }}>Mistral AI</a>'s <a href="https://mistral.ai/en/news/mistral-ocr" target="_blank" rel="noopener noreferrer" style={{ color: theme.palette.primary.main }}>OCR</a> and vision models to convert a PDF and its figures to a text-only file.
+                  <code>paper2llm</code> uses{" "}
+                  <a
+                    href="https://mistral.ai/en"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ color: theme.palette.primary.main }}
+                  >
+                    Mistral AI
+                  </a>
+                  's{" "}
+                  <a
+                    href="https://mistral.ai/en/news/mistral-ocr"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ color: theme.palette.primary.main }}
+                  >
+                    OCR
+                  </a>{" "}
+                  and vision models to convert a PDF and its figures to a
+                  text-only file.
                 </Typography>
                 <Typography variant="body1">
-                  To get started, please enter <a href="https://console.mistral.ai/api-keys" target="_blank" rel="noopener noreferrer" style={{ color: theme.palette.primary.main }} title="Mistral AI offers a rate-limited free API tier">your Mistral API key</a> above.
+                  To get started, please enter{" "}
+                  <a
+                    href="https://console.mistral.ai/api-keys"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ color: theme.palette.primary.main }}
+                    title="Mistral AI offers a rate-limited free API tier"
+                  >
+                    your Mistral API key
+                  </a>{" "}
+                  above.
                 </Typography>
               </Paper>
             )}
