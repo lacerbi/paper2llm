@@ -157,16 +157,9 @@ const App: React.FC = () => {
                       color="secondary"
                       fullWidth
                       onClick={startConversion}
-                      sx={{ mb: 2 }}
                     >
                       Process PDF
                     </Button>
-                    <Paper variant="outlined" sx={{ p: 2 }}>
-                      <Typography variant="body1">
-                        <strong>File:</strong> {pdfFile.name} (
-                        {Math.round(pdfFile.size / 1024)} KB)
-                      </Typography>
-                    </Paper>
                   </Box>
                 )}
               </Box>
