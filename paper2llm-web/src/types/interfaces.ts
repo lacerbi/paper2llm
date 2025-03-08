@@ -56,13 +56,32 @@ export interface FileUploaderState {
 }
 
 /**
+ * Storage type for API keys
+ */
+export type ApiKeyStorageType = 'local' | 'session';
+
+/**
+ * Expiration options for API keys
+ */
+export type ApiKeyExpiration = 'session' | '1day' | '7days' | '30days' | 'never';
+
+/**
+ * Options for storing API keys
+ */
+export interface ApiKeyStorageOptions {
+  password?: string;
+  storageType?: ApiKeyStorageType;
+  expiration?: ApiKeyExpiration;
+}
+
+/**
  * Interface for API key storage and management
  */
 export interface ApiKeyStorage {
   /**
-   * Securely stores an API key
+   * Securely stores an API key with options for storage type and expiration
    */
-  storeApiKey(apiKey: string, password?: string): Promise<void>;
+  storeApiKey(apiKey: string, options?: ApiKeyStorageOptions): Promise<void>;
   
   /**
    * Retrieves a stored API key
@@ -83,6 +102,21 @@ export interface ApiKeyStorage {
    * Removes the stored API key
    */
   clearApiKey(): void;
+  
+  /**
+   * Gets the storage type being used for the API key
+   */
+  getStorageType(): ApiKeyStorageType | null;
+  
+  /**
+   * Gets the expiration setting for the stored API key
+   */
+  getExpiration(): ApiKeyExpiration | null;
+  
+  /**
+   * Checks if the stored API key has expired
+   */
+  hasExpired(): boolean;
 }
 
 /**

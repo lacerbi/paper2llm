@@ -1,6 +1,6 @@
 // AI Summary: React component for secure Mistral API key management.
-// Provides UI for entering, storing, and retrieving API keys with optional password protection.
-// Now uses a compact layout with horizontal arrangement of elements.
+// Provides UI for entering, storing, and retrieving API keys with password protection,
+// storage type selection, and expiration options.
 
 import React, { useState, useEffect, useCallback } from "react";
 import {
@@ -19,6 +19,13 @@ import {
   Grid,
   Stack,
   Chip,
+  Select,
+  MenuItem,
+  FormControlLabel,
+  Switch,
+  Tooltip,
+  AlertTitle,
+  SelectChangeEvent,
 } from "@mui/material";
 import {
   Visibility as VisibilityIcon,
@@ -26,8 +33,9 @@ import {
   Key as KeyIcon,
   Lock as LockIcon,
   Check as CheckIcon,
+  Info as InfoIcon,
 } from "@mui/icons-material";
-import { ApiKeyManagerState } from "../../types/interfaces";
+import { ApiKeyManagerState, ApiKeyStorageOptions, ApiKeyExpiration } from "../../types/interfaces";
 import { webApiKeyStorage } from "../../adapters/web/api-storage";
 
 interface ApiKeyManagerProps {
@@ -46,6 +54,11 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
     isAuthenticated: false,
   });
 
+  // New state for security options
+  const [useSessionStorage, setUseSessionStorage] = useState<boolean>(false);
+  const [expiration, setExpiration] = useState<ApiKeyExpiration>("never");
+  const [showSecurityInfo, setShowSecurityInfo] = useState<boolean>(false);
+
   // Check if an API key is stored on component mount
   useEffect(() => {
     const isStored = webApiKeyStorage.hasApiKey();
@@ -62,6 +75,20 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
     // If there's a stored key that doesn't require a password, retrieve it
     if (isStored && !isPasswordProtected) {
       retrieveApiKey();
+    }
+
+    // Load existing storage preferences if available
+    if (isStored) {
+      const storageType = webApiKeyStorage.getStorageType();
+      const savedExpiration = webApiKeyStorage.getExpiration();
+      
+      if (storageType) {
+        setUseSessionStorage(storageType === 'session');
+      }
+      
+      if (savedExpiration) {
+        setExpiration(savedExpiration);
+      }
     }
   }, []);
 
@@ -105,13 +132,31 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
     }));
   };
 
+  const handleStorageTypeChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setUseSessionStorage(event.target.checked);
+  };
+
+  const handleExpirationChange = (event: SelectChangeEvent) => {
+    setExpiration(event.target.value as ApiKeyExpiration);
+  };
+
+  const toggleSecurityInfo = () => {
+    setShowSecurityInfo(prev => !prev);
+  };
+
   const storeApiKey = async () => {
     try {
       const usePassword = state.password.length > 0;
-      await webApiKeyStorage.storeApiKey(
-        state.apiKey,
-        usePassword ? state.password : undefined
-      );
+      const options: ApiKeyStorageOptions = {
+        storageType: useSessionStorage ? 'session' : 'local',
+        expiration: expiration,
+      };
+      
+      if (usePassword) {
+        options.password = state.password;
+      }
+      
+      await webApiKeyStorage.storeApiKey(state.apiKey, options);
 
       setState((prevState) => ({
         ...prevState,
@@ -167,6 +212,10 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
       error: null,
       isAuthenticated: false,
     });
+    
+    // Reset security options to defaults
+    setUseSessionStorage(false);
+    setExpiration("never");
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -299,6 +348,92 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
               </>
             )}
           </Grid>
+
+          {/* Security Options (only shown when not authenticated) */}
+          {!state.isAuthenticated && (
+            <Box sx={{ mt: 2, mb: 1 }}>
+              <Stack 
+                direction="row" 
+                alignItems="center" 
+                spacing={1}
+                sx={{ mb: 1 }}
+              >
+                <Typography variant="subtitle2">
+                  Security Options
+                </Typography>
+                <Tooltip title="Click for more information about security options">
+                  <IconButton 
+                    size="small" 
+                    color="primary"
+                    onClick={toggleSecurityInfo}
+                  >
+                    <InfoIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              </Stack>
+              
+              {showSecurityInfo && (
+                <Alert 
+                  severity="info" 
+                  sx={{ mb: 2 }}
+                  onClose={toggleSecurityInfo}
+                >
+                  <AlertTitle>Security Information</AlertTitle>
+                  <Typography variant="body2" paragraph>
+                    <strong>Session storage:</strong> API key will be cleared when you close your browser.
+                  </Typography>
+                  <Typography variant="body2" paragraph>
+                    <strong>Local storage:</strong> API key will persist between browser sessions.
+                  </Typography>
+                  <Typography variant="body2">
+                    <strong>Expiration:</strong> Determines when stored API keys are automatically cleared.
+                  </Typography>
+                </Alert>
+              )}
+              
+              <Grid container spacing={2} alignItems="center">
+                <Grid item xs={12} sm={6}>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={useSessionStorage}
+                        onChange={handleStorageTypeChange}
+                        name="sessionStorage"
+                        color="primary"
+                        size="small"
+                      />
+                    }
+                    label={
+                      <Typography variant="body2">
+                        Session only (cleared when browser closes)
+                      </Typography>
+                    }
+                  />
+                </Grid>
+                
+                <Grid item xs={12} sm={6}>
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <Typography variant="body2">
+                      Expiration:
+                    </Typography>
+                    <Select
+                      value={expiration}
+                      onChange={handleExpirationChange}
+                      size="small"
+                      disabled={useSessionStorage}
+                      sx={{ minWidth: 120 }}
+                    >
+                      <MenuItem value="session">Session</MenuItem>
+                      <MenuItem value="1day">1 Day</MenuItem>
+                      <MenuItem value="7days">7 Days</MenuItem>
+                      <MenuItem value="30days">30 Days</MenuItem>
+                      <MenuItem value="never">Never</MenuItem>
+                    </Select>
+                  </Stack>
+                </Grid>
+              </Grid>
+            </Box>
+          )}
 
           {state.error && (
             <Alert severity="error" sx={{ mt: 1 }}>
