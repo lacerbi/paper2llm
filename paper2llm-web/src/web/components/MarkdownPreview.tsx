@@ -1,8 +1,35 @@
 // AI Summary: React component for rendering and interacting with converted Markdown.
 // Features include syntax highlighting, copying, downloading, and metadata display.
+// Uses Material UI for modern styling and improved user experience.
 
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
+import { 
+  Box,
+  Paper,
+  Typography,
+  Button,
+  Tabs,
+  Tab,
+  Chip,
+  Stack,
+  Divider,
+  Snackbar,
+  Alert,
+  IconButton,
+  useTheme
+} from '@mui/material';
+import {
+  ContentCopy as CopyIcon,
+  FileDownload as DownloadIcon,
+  AddCircleOutline as NewIcon,
+  Description as DocumentIcon,
+  Image as ImageIcon,
+  CalendarToday as DateIcon,
+  DescriptionOutlined as MarkdownIcon,
+  Code as CodeIcon,
+  AutoStories as PageIcon
+} from '@mui/icons-material';
 import { PdfToMdResult } from '../../types/interfaces';
 
 interface MarkdownPreviewProps {
@@ -10,12 +37,41 @@ interface MarkdownPreviewProps {
   onNewConversion: () => void;
 }
 
+interface TabPanelProps {
+  children?: React.ReactNode;
+  index: number;
+  value: number;
+}
+
+const TabPanel = (props: TabPanelProps) => {
+  const { children, value, index, ...other } = props;
+
+  return (
+    <div
+      role="tabpanel"
+      hidden={value !== index}
+      id={`markdown-tabpanel-${index}`}
+      aria-labelledby={`markdown-tab-${index}`}
+      {...other}
+    >
+      {value === index && (
+        <Box sx={{ p: 3 }}>
+          {children}
+        </Box>
+      )}
+    </div>
+  );
+};
+
 const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
   result,
   onNewConversion
 }) => {
-  const [copySuccess, setCopySuccess] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'rendered' | 'source'>('rendered');
+  const theme = useTheme();
+  const [tabValue, setTabValue] = useState(0);
+  const [snackbarOpen, setSnackbarOpen] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState('');
+  const [snackbarSeverity, setSnackbarSeverity] = useState<'success' | 'error'>('success');
   
   if (!result) {
     return null;
@@ -23,16 +79,29 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
   
   const { markdown, sourceFile, timestamp, markdownResult } = result;
   
+  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
+    setTabValue(newValue);
+  };
+  
   const handleCopyToClipboard = () => {
     navigator.clipboard.writeText(markdown)
       .then(() => {
-        setCopySuccess('Copied to clipboard!');
-        setTimeout(() => setCopySuccess(null), 2000);
+        setSnackbarMessage('Copied to clipboard!');
+        setSnackbarSeverity('success');
+        setSnackbarOpen(true);
       })
       .catch(() => {
-        setCopySuccess('Failed to copy');
-        setTimeout(() => setCopySuccess(null), 2000);
+        setSnackbarMessage('Failed to copy');
+        setSnackbarSeverity('error');
+        setSnackbarOpen(true);
       });
+  };
+  
+  const handleSnackbarClose = (event?: React.SyntheticEvent | Event, reason?: string) => {
+    if (reason === 'clickaway') {
+      return;
+    }
+    setSnackbarOpen(false);
   };
   
   const handleDownload = () => {
@@ -95,144 +164,252 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
                                 props.children.toString().includes('Image Description');
       
       return (
-        <blockquote 
-          className={isImageDescription ? 'image-description-quote' : 'blockquote'}
+        <Box 
+          component="blockquote"
+          sx={{
+            pl: 2,
+            borderLeft: isImageDescription 
+              ? `4px solid ${theme.palette.info.main}`
+              : `4px solid ${theme.palette.primary.main}`,
+            bgcolor: isImageDescription 
+              ? 'rgba(41, 182, 246, 0.1)'
+              : 'rgba(0, 0, 0, 0.03)',
+            borderRadius: '0 4px 4px 0',
+            py: 1,
+            px: 2,
+            my: 2
+          }}
           {...props}
         />
       );
-    }
+    },
+    code: ({ node, inline, className, children, ...props }: any) => {
+      return inline ? (
+        <Box 
+          component="code"
+          sx={{
+            bgcolor: 'rgba(0, 0, 0, 0.05)',
+            px: 0.75,
+            py: 0.25,
+            borderRadius: 0.5,
+            fontFamily: 'monospace'
+          }}
+          {...props}
+        >
+          {children}
+        </Box>
+      ) : (
+        <Box 
+          component="pre"
+          sx={{
+            bgcolor: 'rgba(0, 0, 0, 0.05)',
+            p: 2,
+            borderRadius: 1,
+            overflowX: 'auto',
+            fontFamily: 'monospace',
+            fontSize: '0.875rem',
+            my: 2
+          }}
+          {...props}
+        >
+          <code className={className}>{children}</code>
+        </Box>
+      );
+    },
+    table: ({ node, ...props }: any) => (
+      <Box 
+        component="div"
+        sx={{ 
+          overflowX: 'auto', 
+          my: 2 
+        }}
+      >
+        <Box 
+          component="table"
+          sx={{
+            borderCollapse: 'collapse',
+            width: '100%',
+            '& th, & td': {
+              border: `1px solid ${theme.palette.divider}`,
+              p: 1,
+              textAlign: 'left'
+            },
+            '& th': {
+              bgcolor: 'rgba(0, 0, 0, 0.04)',
+              fontWeight: 'bold'
+            }
+          }}
+          {...props}
+        />
+      </Box>
+    )
   };
   
-  // Add some custom styles for image descriptions
-  const customStyles = `
-    .image-description-quote {
-      background-color: #f0f8ff;
-      border-left: 4px solid #4682b4;
-      padding: 10px 15px;
-      margin: 10px 0;
-      border-radius: 0 4px 4px 0;
-    }
-    
-    .view-mode-selector {
-      display: flex;
-      margin-bottom: 15px;
-    }
-    
-    .view-mode-button {
-      padding: 5px 10px;
-      border: 1px solid #ddd;
-      background: #f5f5f5;
-      cursor: pointer;
-    }
-    
-    .view-mode-button.active {
-      background: #e0e0e0;
-      font-weight: bold;
-    }
-    
-    .view-mode-button:first-child {
-      border-radius: 4px 0 0 4px;
-    }
-    
-    .view-mode-button:last-child {
-      border-radius: 0 4px 4px 0;
-    }
-    
-    .image-metrics {
-      margin-top: 10px;
-      background-color: #f8f8f8;
-      padding: 8px;
-      border-radius: 4px;
-      font-size: 0.9em;
-    }
-  `;
-  
   return (
-    <div className="markdown-preview">
-      <style>{customStyles}</style>
-      
-      <div className="preview-header">
-        <h2>Converted Markdown</h2>
-        <div className="preview-actions">
-          <button 
-            className="copy-button"
+    <Paper 
+      elevation={2} 
+      sx={{ 
+        p: 3, 
+        borderRadius: 2,
+        overflow: 'hidden'
+      }}
+    >
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+        <Typography variant="h5" component="h2" sx={{ display: 'flex', alignItems: 'center' }}>
+          <MarkdownIcon sx={{ mr: 1 }} />
+          Converted Markdown
+        </Typography>
+        <Stack direction="row" spacing={1}>
+          <Button
+            variant="outlined"
+            startIcon={<CopyIcon />}
             onClick={handleCopyToClipboard}
+            size="small"
           >
-            {copySuccess || 'Copy to Clipboard'}
-          </button>
-          <button 
-            className="download-button"
+            Copy
+          </Button>
+          <Button
+            variant="outlined"
+            color="secondary"
+            startIcon={<DownloadIcon />}
             onClick={handleDownload}
+            size="small"
           >
-            Download Markdown
-          </button>
-          <button 
-            className="new-button"
+            Download
+          </Button>
+          <Button
+            variant="contained"
+            color="primary"
+            startIcon={<NewIcon />}
             onClick={onNewConversion}
+            size="small"
           >
             New Conversion
-          </button>
-        </div>
-      </div>
+          </Button>
+        </Stack>
+      </Box>
       
-      <div className="metadata">
-        <div className="metadata-item">
-          <strong>Source:</strong> {sourceFile.name} ({formatFileSize(sourceFile.size)})
-        </div>
-        <div className="metadata-item">
-          <strong>Converted:</strong> {formatTimestamp(timestamp)}
-        </div>
-        <div className="metadata-item">
-          <strong>Pages:</strong> {markdownResult.pageCount}
-        </div>
-        <div className="metadata-item">
-          <strong>OCR Model:</strong> {markdownResult.model}
-        </div>
+      <Paper 
+        variant="outlined" 
+        sx={{ p: 2, mb: 3, bgcolor: 'background.default' }}
+      >
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} flexWrap="wrap">
+          <Chip 
+            icon={<DocumentIcon />} 
+            label={`${sourceFile.name} (${formatFileSize(sourceFile.size)})`}
+            size="small"
+            color="default"
+            variant="outlined"
+          />
+          <Chip 
+            icon={<DateIcon />} 
+            label={`Converted: ${formatTimestamp(timestamp)}`}
+            size="small"
+            color="default"
+            variant="outlined"
+          />
+          <Chip 
+            icon={<PageIcon />} 
+            label={`Pages: ${markdownResult.pageCount}`}
+            size="small"
+            color="default"
+            variant="outlined"
+          />
+          <Chip 
+            icon={<CodeIcon />} 
+            label={`OCR Model: ${markdownResult.model}`}
+            size="small"
+            color="default"
+            variant="outlined"
+          />
+        </Stack>
         
         {(imageMetrics.originalImageCount > 0 || imageMetrics.describedImageCount > 0) && (
-          <div className="image-metrics">
-            {imageMetrics.hasProcessedImages ? (
-              <div>
-                <strong>Images processed:</strong> {imageMetrics.describedImageCount} of {imageMetrics.originalImageCount} images have AI-generated descriptions
-              </div>
-            ) : (
-              <div>
-                <strong>Images:</strong> {imageMetrics.originalImageCount} images detected 
-                {imageMetrics.originalImageCount > 0 ? " (no AI descriptions generated)" : ""}
-              </div>
-            )}
-          </div>
+          <Box sx={{ mt: 2 }}>
+            <Chip 
+              icon={<ImageIcon />} 
+              label={
+                imageMetrics.hasProcessedImages
+                  ? `Images: ${imageMetrics.describedImageCount}/${imageMetrics.originalImageCount} with AI descriptions`
+                  : `Images: ${imageMetrics.originalImageCount} detected (no AI descriptions)`
+              }
+              size="small"
+              color={imageMetrics.hasProcessedImages ? "info" : "default"}
+              variant="outlined"
+            />
+          </Box>
         )}
-      </div>
+      </Paper>
       
-      <div className="view-mode-selector">
-        <button 
-          className={`view-mode-button ${viewMode === 'rendered' ? 'active' : ''}`}
-          onClick={() => setViewMode('rendered')}
+      <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
+        <Tabs
+          value={tabValue}
+          onChange={handleTabChange}
+          aria-label="markdown view tabs"
+          indicatorColor="primary"
         >
-          Rendered View
-        </button>
-        <button 
-          className={`view-mode-button ${viewMode === 'source' ? 'active' : ''}`}
-          onClick={() => setViewMode('source')}
-        >
-          Source View
-        </button>
-      </div>
+          <Tab label="Rendered View" id="markdown-tab-0" aria-controls="markdown-tabpanel-0" />
+          <Tab label="Source View" id="markdown-tab-1" aria-controls="markdown-tabpanel-1" />
+        </Tabs>
+      </Box>
       
-      <div className="markdown-container">
-        {viewMode === 'rendered' ? (
-          <div className="rendered-markdown">
-            <ReactMarkdown components={components}>{markdown}</ReactMarkdown>
-          </div>
-        ) : (
-          <div className="markdown-source">
-            <h3>Markdown Source</h3>
-            <pre>{markdown}</pre>
-          </div>
-        )}
-      </div>
-    </div>
+      <TabPanel value={tabValue} index={0}>
+        <Paper
+          variant="outlined"
+          sx={{ 
+            p: 3, 
+            bgcolor: 'background.default', 
+            maxHeight: '60vh', 
+            overflow: 'auto',
+            borderRadius: 1
+          }}
+        >
+          <ReactMarkdown components={components}>
+            {markdown}
+          </ReactMarkdown>
+        </Paper>
+      </TabPanel>
+      
+      <TabPanel value={tabValue} index={1}>
+        <Box sx={{ mb: 2 }}>
+          <Typography variant="h6" component="h3" sx={{ mb: 1 }}>
+            Markdown Source
+          </Typography>
+          <Paper
+            variant="outlined"
+            sx={{ 
+              p: 2, 
+              bgcolor: 'rgba(0, 0, 0, 0.03)', 
+              maxHeight: '60vh', 
+              overflow: 'auto',
+              borderRadius: 1,
+              fontFamily: 'monospace',
+              fontSize: '0.875rem',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word'
+            }}
+          >
+            {markdown}
+          </Paper>
+        </Box>
+      </TabPanel>
+      
+      <Snackbar
+        open={snackbarOpen}
+        autoHideDuration={3000}
+        onClose={handleSnackbarClose}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert 
+          onClose={handleSnackbarClose} 
+          severity={snackbarSeverity} 
+          sx={{ width: '100%' }}
+          variant="filled"
+        >
+          {snackbarMessage}
+        </Alert>
+      </Snackbar>
+    </Paper>
   );
 };
 

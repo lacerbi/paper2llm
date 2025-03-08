@@ -1,10 +1,5 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
+/* Base styles that complement Material UI */
 body {
-  background-color: #f9fafb;
-  color: #1f2937;
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen,
     Ubuntu, Cantarell, "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
@@ -15,4 +10,86 @@ body {
 code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, "Courier New",
     monospace;
+}
+
+/* Add any global styles here that aren't covered by Material UI theming */
+.rendered-markdown {
+  padding: 1.5rem;
+  border-radius: 0.375rem;
+  overflow-x: auto;
+}
+
+.rendered-markdown h1,
+.rendered-markdown h2,
+.rendered-markdown h3,
+.rendered-markdown h4,
+.rendered-markdown h5,
+.rendered-markdown h6 {
+  margin-top: 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.rendered-markdown p {
+  margin-bottom: 1rem;
+}
+
+.rendered-markdown ul,
+.rendered-markdown ol {
+  margin-bottom: 1rem;
+  padding-left: 2rem;
+}
+
+.rendered-markdown table {
+  border-collapse: collapse;
+  width: 100%;
+  margin-bottom: 1rem;
+}
+
+.rendered-markdown th,
+.rendered-markdown td {
+  border: 1px solid #e5e7eb;
+  padding: 0.5rem;
+}
+
+.rendered-markdown img {
+  max-width: 100%;
+  height: auto;
+  margin: 1rem 0;
+}
+
+.rendered-markdown blockquote {
+  border-left: 4px solid #4f46e5;
+  padding-left: 1rem;
+  margin-left: 0;
+  margin-right: 0;
+  font-style: italic;
+}
+
+.rendered-markdown code {
+  background-color: rgba(0, 0, 0, 0.05);
+  padding: 0.2rem 0.4rem;
+  border-radius: 0.25rem;
+  font-family: monospace;
+}
+
+.rendered-markdown pre {
+  background-color: rgba(0, 0, 0, 0.05);
+  padding: 1rem;
+  border-radius: 0.375rem;
+  overflow-x: auto;
+  margin-bottom: 1rem;
+}
+
+.rendered-markdown pre code {
+  background-color: transparent;
+  padding: 0;
+}
+
+/* Custom styles for image descriptions */
+.image-description-quote {
+  background-color: #f0f8ff;
+  border-left: 4px solid #4682b4;
+  padding: 10px 15px;
+  margin: 10px 0;
+  border-radius: 0 4px 4px 0;
 }
