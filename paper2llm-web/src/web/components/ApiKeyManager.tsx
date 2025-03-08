@@ -53,6 +53,9 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
     error: null,
     isAuthenticated: false,
   });
+  
+  // For UI display only - to mask the actual API key
+  const [maskedApiKey, setMaskedApiKey] = useState<string>("");
 
   // New state for security options
   const [useSessionStorage, setUseSessionStorage] = useState<boolean>(false);
@@ -100,12 +103,30 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
     }
   }, [state.apiKey]);
 
+  // Helper functions to mask API key
+  const getFullyMaskedApiKey = (key: string): string => {
+    if (!key || key.length <= 4) return "••••••••";
+    return "•".repeat(key.length);
+  };
+  
+  const getPartiallyMaskedApiKey = (key: string): string => {
+    if (!key || key.length <= 4) return key;
+    const lastFour = key.slice(-4);
+    return `${"•".repeat(key.length - 4)}${lastFour}`;
+  };
+
   // Pass the API key to the parent component when authenticated
   useEffect(() => {
     if (state.isAuthenticated && state.apiKey) {
       onApiKeyChange(state.apiKey);
+      
+      // Update masked key for display
+      setMaskedApiKey(state.showPassword 
+        ? getPartiallyMaskedApiKey(state.apiKey) 
+        : getFullyMaskedApiKey(state.apiKey));
     } else if (!state.isAuthenticated) {
       onApiKeyChange("");
+      setMaskedApiKey("");
     }
   }, [state.isAuthenticated, state.apiKey, onApiKeyChange]);
 
@@ -126,10 +147,18 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
   };
 
   const toggleShowPassword = () => {
+    const newShowPassword = !state.showPassword;
     setState((prevState) => ({
       ...prevState,
-      showPassword: !prevState.showPassword,
+      showPassword: newShowPassword,
     }));
+    
+    // Update the masked key if authenticated
+    if (state.isAuthenticated && state.apiKey) {
+      setMaskedApiKey(newShowPassword 
+        ? getPartiallyMaskedApiKey(state.apiKey) 
+        : getFullyMaskedApiKey(state.apiKey));
+    }
   };
 
   const handleStorageTypeChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -186,6 +215,9 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
           isAuthenticated: true,
           error: null,
         }));
+        setMaskedApiKey(state.showPassword 
+          ? getPartiallyMaskedApiKey(apiKey) 
+          : getFullyMaskedApiKey(apiKey));
       } else {
         setState((prevState) => ({
           ...prevState,
@@ -264,8 +296,8 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
               <TextField
                 id="apiKey"
                 label="API Key"
-                type={state.showPassword ? "text" : "password"}
-                value={state.apiKey}
+                type={state.isAuthenticated ? "text" : (state.showPassword ? "text" : "password")}
+                value={state.isAuthenticated ? maskedApiKey : state.apiKey}
                 onChange={handleApiKeyChange}
                 placeholder="Enter your Mistral API key"
                 disabled={state.isAuthenticated}
