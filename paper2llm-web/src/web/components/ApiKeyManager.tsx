@@ -461,52 +461,25 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
           {/* Security Options (only shown when not authenticated) */}
           {!state.isAuthenticated && (
             <Box sx={{ mt: 2, mb: 1 }}>
-              <Stack 
-                direction="row" 
-                alignItems="center" 
-                spacing={1}
-                sx={{ mb: 1 }}
-              >
-                <Typography variant="subtitle2">
-                  Security Options
-                </Typography>
-                <Tooltip title="Click for more information about security options">
-                  <IconButton 
-                    size="small" 
-                    color="primary"
-                    onClick={toggleSecurityInfo}
-                  >
-                    <InfoIcon fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-              </Stack>
-              
-              {showSecurityInfo && (
-                <Alert 
-                  severity="info" 
-                  sx={{ mb: 2 }}
-                  onClose={toggleSecurityInfo}
-                >
-                  <AlertTitle>Security Information</AlertTitle>
-                  <Typography variant="body2" paragraph>
-                    <strong>Storage type:</strong> Controlled by expiration selection:
-                  </Typography>
-                  <Typography variant="body2" paragraph sx={{ pl: 2 }}>
-                    • <strong>Session:</strong> API key stored in session storage and cleared when the browser closes. 
-                    Uses an auto-generated encryption key (no password needed).
-                  </Typography>
-                  <Typography variant="body2" paragraph sx={{ pl: 2 }}>
-                    • <strong>1 Day/7 Days/30 Days/Never:</strong> API key stored in local storage with specified expiration. 
-                    <strong> Password is required</strong> for encryption between browser sessions.
-                  </Typography>
-                  <Typography variant="body2">
-                    <strong>Expiration:</strong> Determines when stored API keys are automatically cleared.
-                  </Typography>
-                </Alert>
-              )}
-              
-              <Grid container spacing={2} alignItems="center">
-                <Grid item xs={12}>
+              <Grid container alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
+                <Grid item>
+                  <Stack direction="row" alignItems="center" spacing={1}>
+                    <Typography variant="subtitle2">
+                      Security Options
+                    </Typography>
+                    <Tooltip title="Click for more information about security options">
+                      <IconButton 
+                        size="small" 
+                        color="primary"
+                        onClick={toggleSecurityInfo}
+                      >
+                        <InfoIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  </Stack>
+                </Grid>
+                
+                <Grid item>
                   <Stack direction="row" spacing={1} alignItems="center">
                     <Typography variant="body2">
                       Storage & Expiration:
@@ -532,6 +505,30 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
                   </Stack>
                 </Grid>
               </Grid>
+              
+              {showSecurityInfo && (
+                <Alert 
+                  severity="info" 
+                  sx={{ mb: 2 }}
+                  onClose={toggleSecurityInfo}
+                >
+                  <AlertTitle>Security Information</AlertTitle>
+                  <Typography variant="body2" paragraph>
+                    <strong>Storage type:</strong> Controlled by expiration selection:
+                  </Typography>
+                  <Typography variant="body2" paragraph sx={{ pl: 2 }}>
+                    • <strong>Session:</strong> API key stored in session storage and cleared when the browser closes. 
+                    Uses an auto-generated encryption key (no password needed).
+                  </Typography>
+                  <Typography variant="body2" paragraph sx={{ pl: 2 }}>
+                    • <strong>1 Day/7 Days/30 Days/Never:</strong> API key stored in local storage with specified expiration. 
+                    <strong> Password is required</strong> for encryption between browser sessions.
+                  </Typography>
+                  <Typography variant="body2">
+                    <strong>Expiration:</strong> Determines when stored API keys are automatically cleared.
+                  </Typography>
+                </Alert>
+              )}
               
               {/* Security Warning - only show when using persistent storage without password */}
               {expiration !== 'session' && !state.password && (
