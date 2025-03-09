@@ -304,7 +304,16 @@ const App: React.FC = () => {
         }}
       >
         <Typography variant="body2" sx={{ mb: 1 }}>
-          © 2025 paper2llm v{packageInfo.version} - Developed by{" "}
+          © 2025 paper2llm v{packageInfo.version} - MIT License |{" "}
+          <a
+            href="https://github.com/lacerbi/paper2llm"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: theme.palette.primary.main }}
+          >
+            GitHub
+          </a>{" "}
+          - Developed by{" "}
           <a
             href="https://lacerbi.github.io/"
             target="_blank"
@@ -312,16 +321,6 @@ const App: React.FC = () => {
             style={{ color: theme.palette.primary.main }}
           >
             Luigi Acerbi
-          </a>{" "}
-          |
-          <a
-            href="https://www.helsinki.fi/en/researchgroups/machine-and-human-intelligence"
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{ color: theme.palette.primary.main }}
-          >
-            {" "}
-            Machine & Human Intelligence Group
           </a>{" "}
           - Follow on{" "}
           <a
