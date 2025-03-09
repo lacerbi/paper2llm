@@ -65,7 +65,6 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
 
   // State for security options
   const [expiration, setExpiration] = useState<ApiKeyExpiration>("session");
-  const [showSecurityInfo, setShowSecurityInfo] = useState<boolean>(false);
 
   // New state for password validation
   const [passwordError, setPasswordError] = useState<string | null>(null);
@@ -191,11 +190,7 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
     // Password validation will be triggered by the useEffect
   };
 
-  const toggleSecurityInfo = () => {
-    setShowSecurityInfo((prev) => !prev);
-  };
-
-  // Validate password based on expiration type
+  // Validate password based on expiration type and security requirements
   const validatePasswordRequirements = () => {
     // Clear previous errors
     setPasswordError(null);
@@ -204,6 +199,24 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
     if (expiration !== "session") {
       if (!state.password || state.password.length < 1) {
         setPasswordError("Password is required for persistent storage");
+        return false;
+      }
+      
+      // Check minimum length requirement
+      if (state.password.length < 8) {
+        setPasswordError("Password must be at least 8 characters long");
+        return false;
+      }
+      
+      // Check character variety requirement
+      const hasLetters = /[a-zA-Z]/.test(state.password);
+      const hasDigits = /[0-9]/.test(state.password);
+      const hasSpecials = /[^a-zA-Z0-9]/.test(state.password);
+      
+      const charTypesCount = [hasLetters, hasDigits, hasSpecials].filter(Boolean).length;
+      
+      if (charTypesCount < 2) {
+        setPasswordError("Password must contain at least two different types of characters (letters, digits, or special characters)");
         return false;
       }
     }
@@ -473,8 +486,12 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
                     color="primary"
                     disabled={!canSubmit()}
                     fullWidth
-                    size="medium"
-                    sx={{ height: "100%" }}
+                    size="small"
+                    sx={{
+                      height: "40px",
+                      display: "flex",
+                      alignItems: "center",
+                    }}
                   >
                     {state.isStored ? "Unlock" : "Save"}
                   </Button>
@@ -495,14 +512,10 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
                 <Grid item>
                   <Stack direction="row" alignItems="center" spacing={1}>
                     <Typography variant="subtitle2">
-                      Security Options
+                      API Key Security Information
                     </Typography>
-                    <Tooltip title="Click for more information about security options">
-                      <IconButton
-                        size="small"
-                        color="primary"
-                        onClick={toggleSecurityInfo}
-                      >
+                    <Tooltip title="Keys are only shared with LLM providers and stored encrypted. We recommend temporary session-only storage. There is the option of password-protected persistent storage with an expiration date.">
+                      <IconButton size="small" color="primary">
                         <InfoIcon fontSize="small" />
                       </IconButton>
                     </Tooltip>
@@ -536,35 +549,16 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
                 </Grid>
               </Grid>
 
-              {showSecurityInfo && (
-                <Alert
-                  severity="info"
-                  sx={{ mb: 2 }}
-                  onClose={toggleSecurityInfo}
-                >
-                  <AlertTitle>API Key Security Information</AlertTitle>
-                  <Typography variant="body2" paragraph sx={{ pl: 2 }}>
-                    • API Key is only passed to the LLM provider and stored
-                    encrypted.
-                  </Typography>
-                  <Typography variant="body2" paragraph sx={{ pl: 2 }}>
-                    • <strong>Session only:</strong> Temporary storage that
-                    clears when browser closes.
-                  </Typography>
-                  <Typography variant="body2" paragraph sx={{ pl: 2 }}>
-                    • <strong>Duration:</strong> Persistent storage with
-                    specified expiration. <strong>Password required</strong> for
-                    security.
-                  </Typography>
-                </Alert>
-              )}
-
-              {/* Security Warning - only show when using persistent storage without password */}
-              {expiration !== "session" && !state.password && (
+              {/* Security Warning - show password requirements for persistent storage */}
+              {expiration !== "session" && (!state.password || passwordError) && (
                 <Alert severity="warning" sx={{ mt: 2 }} icon={<LockIcon />}>
-                  <AlertTitle>Password Required</AlertTitle>A password is
-                  required when storing API keys persistently. This ensures your
-                  API key remains securely encrypted between browser sessions.
+                  <AlertTitle>Password Requirements</AlertTitle>
+                  A strong password is required when storing API keys persistently:
+                  <ul>
+                    <li>At least 8 characters long</li>
+                    <li>Must contain at least two different types of characters (letters, digits, special characters)</li>
+                  </ul>
+                  This ensures your API key remains securely encrypted between browser sessions.
                 </Alert>
               )}
             </Box>

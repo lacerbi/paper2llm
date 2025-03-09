@@ -15,6 +15,37 @@ class ApiKeyStorageError extends Error {
 }
 
 /**
+ * Password validation helper functions
+ */
+const passwordValidation = {
+  /**
+   * Checks if password meets minimum requirements:
+   * - At least 8 characters long
+   * - Contains at least two types of characters (letters, digits, special chars)
+   */
+  validatePassword(password: string): boolean {
+    // Check length
+    if (password.length < 8) return false;
+    
+    // Check character variety
+    const hasLetters = /[a-zA-Z]/.test(password);
+    const hasDigits = /[0-9]/.test(password);
+    const hasSpecials = /[^a-zA-Z0-9]/.test(password);
+    
+    const charTypesCount = [hasLetters, hasDigits, hasSpecials].filter(Boolean).length;
+    
+    return charTypesCount >= 2;
+  },
+  
+  /**
+   * Returns detailed error message about password requirements
+   */
+  getPasswordRequirementsMessage(): string {
+    return 'Password must be at least 8 characters long and contain at least two different types of characters (letters, digits, special characters)';
+  }
+};
+
+/**
  * Implements the ApiKeyStorage interface for web browsers
  * using localStorage or sessionStorage with encryption for secure storage
  */
@@ -209,8 +240,15 @@ export class WebApiKeyStorage implements ApiKeyStorage {
     }
     
     // For persistent storage (localStorage), password is required
-    if (storageType === 'local' && !password) {
-      throw new ApiKeyStorageError('Password is required for persistent storage');
+    if (storageType === 'local') {
+      if (!password) {
+        throw new ApiKeyStorageError('Password is required for persistent storage');
+      }
+      
+      // Validate password strength
+      if (!passwordValidation.validatePassword(password)) {
+        throw new ApiKeyStorageError(passwordValidation.getPasswordRequirementsMessage());
+      }
     }
     
     const storage = this.getStorage(storageType);
