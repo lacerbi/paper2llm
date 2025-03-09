@@ -4,6 +4,68 @@
 import { ApiProvider, ApiKeyStorageType, ApiKeyExpiration, ApiKeyStorageOptions } from "../../../types/interfaces";
 
 /**
+ * Provider-specific API key interface
+ * 
+ * This interface defines the contract for provider-specific implementations
+ * that handle validation, storage patterns, and other provider-specific logic.
+ * Each API provider (Mistral, OpenAI, etc.) will have its own implementation.
+ */
+export interface ApiKeyProvider {
+  /**
+   * Gets the provider identifier
+   */
+  getProviderId(): ApiProvider;
+  
+  /**
+   * Validates if an API key has the correct format for this provider
+   * 
+   * @param apiKey The API key to validate
+   * @returns true if the API key has a valid format, false otherwise
+   */
+  validateApiKey(apiKey: string): boolean;
+  
+  /**
+   * Gets the storage key for this provider
+   * 
+   * @param basePattern The base pattern to use
+   * @returns The storage key for this provider
+   */
+  getStorageKey(basePattern: string): string;
+  
+  /**
+   * Gets the protected key for this provider
+   * 
+   * @param basePattern The base pattern to use
+   * @returns The protected key for this provider
+   */
+  getProtectedKey(basePattern: string): string;
+  
+  /**
+   * Gets the storage type key for this provider
+   * 
+   * @param basePattern The base pattern to use
+   * @returns The storage type key for this provider
+   */
+  getStorageTypeKey(basePattern: string): string;
+  
+  /**
+   * Gets the expiration key for this provider
+   * 
+   * @param basePattern The base pattern to use
+   * @returns The expiration key for this provider
+   */
+  getExpirationKey(basePattern: string): string;
+  
+  /**
+   * Gets the expiration time key for this provider
+   * 
+   * @param basePattern The base pattern to use
+   * @returns The expiration time key for this provider
+   */
+  getExpirationTimeKey(basePattern: string): string;
+}
+
+/**
  * Storage format for encrypted API keys
  * 
  * This interface defines the structure used to store encrypted API keys securely.
@@ -36,14 +98,14 @@ export interface ValidationInfo {
 }
 
 /**
- * Provider-specific storage key patterns
+ * Base storage key patterns
  * 
- * Defines the storage key patterns used for different providers.
- * These patterns include placeholders (e.g., {provider}) that are
- * replaced with actual provider names when generating storage keys.
+ * Defines the base storage key patterns used for different operations.
+ * These patterns act as templates that are combined with provider information
+ * to generate the final storage keys.
  * 
- * This approach allows the same key structure to be used across
- * different API providers while keeping their data separate.
+ * Provider-specific implementations will use these patterns to generate
+ * their unique storage keys, ensuring consistent naming across providers.
  */
 export interface StorageKeyPatterns {
   storageKeyPattern: string;
@@ -69,15 +131,42 @@ export interface LegacyStorageKeys {
 }
 
 /**
- * Provider-specific validation patterns
+ * Provider Registry Interface
  * 
- * Maps API providers to regular expressions that validate their API key formats.
- * Each provider typically has a distinct API key format (e.g., OpenAI keys start
- * with "sk-", while Mistral keys have a different pattern).
- * 
- * These patterns are used to validate API keys before storage and after retrieval.
+ * Defines the contract for a registry that manages provider implementations.
+ * The registry acts as a central point for accessing provider-specific functionality,
+ * allowing the main storage class to delegate operations to the appropriate provider.
  */
-export type ValidationPatterns = Record<ApiProvider, RegExp>;
+export interface ProviderRegistry {
+  /**
+   * Registers a provider implementation
+   * 
+   * @param provider The provider implementation to register
+   */
+  registerProvider(provider: ApiKeyProvider): void;
+  
+  /**
+   * Gets a provider implementation by its identifier
+   * 
+   * @param providerId The provider identifier
+   * @returns The provider implementation or null if not found
+   */
+  getProvider(providerId: ApiProvider): ApiKeyProvider | null;
+  
+  /**
+   * Gets all registered providers
+   * 
+   * @returns Array of provider implementations
+   */
+  getAllProviders(): ApiKeyProvider[];
+  
+  /**
+   * Gets the default provider
+   * 
+   * @returns The default provider implementation
+   */
+  getDefaultProvider(): ApiKeyProvider;
+}
 
 /**
  * Expiration durations in milliseconds

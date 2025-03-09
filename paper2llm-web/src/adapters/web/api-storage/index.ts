@@ -1,5 +1,5 @@
 // AI Summary: Barrel file that exports all components from the api-storage module.
-// Simplifies imports while maintaining the existing public API.
+// Simplifies imports while making provider components available through a single import.
 
 /**
  * API Key Storage Module
@@ -15,6 +15,13 @@
  * the ApiKeyStorage interface.
  */
 
+// Core storage implementation
 export { WebApiKeyStorage } from './web-api-key-storage';
 export { ApiKeyStorageError } from './errors';
+
+// Provider system
+export { WebProviderRegistry } from './provider-registry';
+export * from './providers';
+
+// Interfaces and utility types
 export * from './interfaces';

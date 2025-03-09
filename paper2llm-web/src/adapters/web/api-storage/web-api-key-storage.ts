@@ -1,7 +1,7 @@
-// AI Summary: Implements secure API key storage for multiple providers using localStorage/sessionStorage with XOR encryption.
-// Requires password for persistent storage while using auto-generated keys for session storage.
-// Supports provider-specific validation, storage, retrieval with improved security practices.
-// Includes key integrity verification to detect incorrect passwords and prevent returning corrupted keys.
+// AI Summary: Implements secure API key storage for multiple providers using provider registry system.
+// Delegates provider-specific operations to provider implementations while maintaining
+// backward compatibility with legacy storage. Supports multiple storage locations, expiration
+// options, and password protection with improved security and maintainability.
 
 import {
   ApiKeyStorage,
@@ -13,15 +13,16 @@ import {
 
 import { ApiKeyStorageError } from "./errors";
 import { 
-  EncryptedKeyData, 
-  ValidationInfo,
-  ValidationPatterns,
+  ProviderRegistry,
   ExpirationDurations,
   StorageKeyPatterns,
-  LegacyStorageKeys
+  LegacyStorageKeys,
+  ApiKeyProvider
 } from "./interfaces";
 import { passwordValidation } from "./password-utils";
 import { encryptionUtils } from "./encryption-utils";
+import { WebProviderRegistry } from "./provider-registry";
+import { createDefaultProviders } from "./providers";
 
 /**
  * Implements the ApiKeyStorage interface for web browsers
@@ -37,12 +38,13 @@ import { encryptionUtils } from "./encryption-utils";
  * - Migration from legacy storage formats
  * - Validation of API key formats and decryption integrity
  * 
- * This implementation prioritizes security while maintaining a good user experience
- * by offering flexible storage options and robust error handling.
+ * This implementation uses a provider registry system to delegate
+ * provider-specific operations to appropriate provider implementations,
+ * making it easy to add support for new API providers.
  */
 export class WebApiKeyStorage implements ApiKeyStorage {
-  // Default provider
-  private readonly defaultProvider: ApiProvider = "mistral";
+  // Provider registry for managing provider-specific functionality
+  private readonly providerRegistry: ProviderRegistry;
 
   // Storage key patterns (with {provider} placeholder)
   private readonly keyPatterns: StorageKeyPatterns = {
@@ -62,12 +64,6 @@ export class WebApiKeyStorage implements ApiKeyStorage {
     legacyExpirationTimeKey: "paper2llm_api_key_expiration_time"
   };
 
-  // Validation patterns for different providers
-  private readonly validationPatterns: ValidationPatterns = {
-    mistral: /^[A-Za-z0-9-_]{32,64}$/, // Common format for Mistral API keys
-    openai: /^sk-[A-Za-z0-9]{32,64}$/, // OpenAI API keys typically start with 'sk-'
-  };
-
   private readonly storageVersion = 3; // Increment when storage format changes
 
   // Expiration durations in milliseconds
@@ -80,80 +76,25 @@ export class WebApiKeyStorage implements ApiKeyStorage {
   };
 
   /**
-   * Get a storage key for a specific provider
+   * Creates a new WebApiKeyStorage instance
    * 
-   * This utility method generates provider-specific storage keys by replacing
-   * the {provider} placeholder in key patterns with the actual provider name.
-   * This approach allows a consistent key structure across different providers.
-   *
-   * @param keyPattern The key pattern with {provider} placeholder
-   * @param provider The provider to get key for
-   * @returns The storage key for the specified provider
-   */
-  private getProviderKey(keyPattern: string, provider: ApiProvider): string {
-    return keyPattern.replace("{provider}", provider);
-  }
-
-  /**
-   * Securely encrypts the API key using provided password or a session-based key
+   * Initializes the provider registry with default provider implementations
+   * and performs legacy key migration if needed.
    * 
-   * This method delegates to the encryptionUtils module for the actual encryption
-   * but manages the selection of appropriate password:
-   * - For persistent storage (localStorage), a user-provided password is required
-   * - For session storage, an auto-generated random key is used if none provided
-   *
-   * @param apiKey The API key to encrypt
-   * @param password Optional user password (required for localStorage)
-   * @param provider The provider for this API key
-   * @returns Encrypted API key data structure
+   * @param defaultProvider Optional default provider ID (defaults to "mistral")
    */
-  private encryptApiKey(
-    apiKey: string,
-    password?: string,
-    provider?: ApiProvider
-  ): string {
-    // For session-based encryption (no password provided)
-    if (!password) {
-      password = encryptionUtils.getSessionKey();
+  constructor(defaultProvider: ApiProvider = "mistral") {
+    // Initialize provider registry with default providers
+    this.providerRegistry = new WebProviderRegistry(defaultProvider);
+    
+    // Register all default providers
+    const providers = createDefaultProviders();
+    for (const provider of providers) {
+      this.providerRegistry.registerProvider(provider);
     }
-
-    return encryptionUtils.encryptApiKey(
-      apiKey, 
-      password, 
-      provider, 
-      this.storageVersion, 
-      this.defaultProvider
-    );
-  }
-
-  /**
-   * Decrypts the stored API key
-   * 
-   * This method delegates to the encryptionUtils module for actual decryption
-   * but manages the selection of the appropriate password:
-   * - For password-protected keys, the provided password is used
-   * - For session-based keys, the auto-generated session key is used
-   * 
-   * The decryption includes validation to ensure the correct password was used
-   * and the decrypted key has a valid format.
-   *
-   * @param encryptedData The encrypted API key data (Base64 encoded JSON string)
-   * @param password Optional user password (required if key was encrypted with password)
-   * @returns The decrypted API key
-   * @throws ApiKeyStorageError if password is incorrect or data is corrupted
-   */
-  private decryptApiKey(encryptedData: string, password?: string): string {
-    if (!password) {
-      // Use a session-based key if no password provided
-      password = encryptionUtils.getSessionKey();
-    }
-
-    return encryptionUtils.decryptApiKey(
-      encryptedData, 
-      password, 
-      this.validateApiKey.bind(this), 
-      this.defaultProvider
-    );
+    
+    // Check for and migrate legacy keys if needed
+    this.checkAndMigrateLegacyKey();
   }
 
   /**
@@ -199,6 +140,9 @@ export class WebApiKeyStorage implements ApiKeyStorage {
       }
 
       if (storage) {
+        const defaultProvider = this.providerRegistry.getDefaultProvider();
+        const providerId = defaultProvider.getProviderId();
+        
         const isProtected = storage.getItem(this.legacyKeys.legacyProtectedKey) === "true";
         const storageType =
           (storage.getItem(this.legacyKeys.legacyStorageTypeKey) as ApiKeyStorageType) ||
@@ -208,27 +152,12 @@ export class WebApiKeyStorage implements ApiKeyStorage {
           "never";
         const expirationTime = storage.getItem(this.legacyKeys.legacyExpirationTimeKey);
 
-        // Create the provider-specific keys
-        const mistralStorageKey = this.getProviderKey(
-          this.keyPatterns.storageKeyPattern,
-          "mistral"
-        );
-        const mistralProtectedKey = this.getProviderKey(
-          this.keyPatterns.protectedKeyPattern,
-          "mistral"
-        );
-        const mistralStorageTypeKey = this.getProviderKey(
-          this.keyPatterns.storageTypeKeyPattern,
-          "mistral"
-        );
-        const mistralExpirationKey = this.getProviderKey(
-          this.keyPatterns.expirationKeyPattern,
-          "mistral"
-        );
-        const mistralExpirationTimeKey = this.getProviderKey(
-          this.keyPatterns.expirationTimeKeyPattern,
-          "mistral"
-        );
+        // Get provider-specific storage keys
+        const mistralStorageKey = defaultProvider.getStorageKey(this.keyPatterns.storageKeyPattern);
+        const mistralProtectedKey = defaultProvider.getProtectedKey(this.keyPatterns.protectedKeyPattern);
+        const mistralStorageTypeKey = defaultProvider.getStorageTypeKey(this.keyPatterns.storageTypeKeyPattern);
+        const mistralExpirationKey = defaultProvider.getExpirationKey(this.keyPatterns.expirationKeyPattern);
+        const mistralExpirationTimeKey = defaultProvider.getExpirationTimeKey(this.keyPatterns.expirationTimeKeyPattern);
 
         // Move the legacy data to provider-specific keys
         storage.setItem(mistralStorageKey, legacyKey);
@@ -278,7 +207,7 @@ export class WebApiKeyStorage implements ApiKeyStorage {
    * 
    * This is the primary method for storing API keys with comprehensive options
    * and security validation. The method:
-   * 1. Checks for and migrates legacy keys if needed
+   * 1. Gets the appropriate provider implementation
    * 2. Validates the API key format for the specified provider
    * 3. Enforces security rules (password required for persistent storage)
    * 4. Validates password strength for persistent storage
@@ -297,18 +226,23 @@ export class WebApiKeyStorage implements ApiKeyStorage {
     apiKey: string,
     options: ApiKeyStorageOptions = {}
   ): Promise<void> {
+    // Get default provider ID if none specified
+    const defaultProviderId = this.providerRegistry.getDefaultProviderId();
     const {
       password,
       storageType = "local",
       expiration = "never",
-      provider = this.defaultProvider,
+      provider = defaultProviderId,
     } = options;
 
-    // Check for legacy keys and migrate if needed
-    this.checkAndMigrateLegacyKey();
+    // Get the provider implementation
+    const providerImpl = this.providerRegistry.getProvider(provider);
+    if (!providerImpl) {
+      throw new ApiKeyStorageError(`Unsupported provider: ${provider}`);
+    }
 
     // Validate API key format for the specified provider
-    if (!this.validateApiKey(apiKey, provider)) {
+    if (!providerImpl.validateApiKey(apiKey)) {
       throw new ApiKeyStorageError("Invalid API key format");
     }
 
@@ -329,26 +263,20 @@ export class WebApiKeyStorage implements ApiKeyStorage {
     }
 
     const storage = this.getStorage(storageType);
-    const encryptedKeyData = this.encryptApiKey(apiKey, password, provider);
+    const encryptedKeyData = encryptionUtils.encryptApiKey(
+      apiKey, 
+      password || encryptionUtils.getSessionKey(), 
+      provider,
+      this.storageVersion, 
+      defaultProviderId
+    );
 
     // Get provider-specific storage keys
-    const storageKey = this.getProviderKey(this.keyPatterns.storageKeyPattern, provider);
-    const protectedKey = this.getProviderKey(
-      this.keyPatterns.protectedKeyPattern,
-      provider
-    );
-    const storageTypeKey = this.getProviderKey(
-      this.keyPatterns.storageTypeKeyPattern,
-      provider
-    );
-    const expirationKey = this.getProviderKey(
-      this.keyPatterns.expirationKeyPattern,
-      provider
-    );
-    const expirationTimeKey = this.getProviderKey(
-      this.keyPatterns.expirationTimeKeyPattern,
-      provider
-    );
+    const storageKey = providerImpl.getStorageKey(this.keyPatterns.storageKeyPattern);
+    const protectedKey = providerImpl.getProtectedKey(this.keyPatterns.protectedKeyPattern);
+    const storageTypeKey = providerImpl.getStorageTypeKey(this.keyPatterns.storageTypeKeyPattern);
+    const expirationKey = providerImpl.getExpirationKey(this.keyPatterns.expirationKeyPattern);
+    const expirationTimeKey = providerImpl.getExpirationTimeKey(this.keyPatterns.expirationTimeKeyPattern);
 
     // Store the encrypted key
     storage.setItem(storageKey, encryptedKeyData);
@@ -371,7 +299,7 @@ export class WebApiKeyStorage implements ApiKeyStorage {
    * Retrieves the API key from storage, checking expiration first
    * 
    * This method handles the complete API key retrieval process:
-   * 1. Checks for and migrates legacy keys if needed
+   * 1. Gets the provider implementation
    * 2. Verifies if the key has expired and clears it if so
    * 3. Determines the storage type being used
    * 4. Retrieves the encrypted key from the appropriate storage
@@ -380,25 +308,32 @@ export class WebApiKeyStorage implements ApiKeyStorage {
    * 7. Returns the decrypted key or throws meaningful errors
    *
    * @param password Password for decryption (required if key was stored with password)
-   * @param provider The provider to retrieve the key for (defaults to 'mistral')
+   * @param provider The provider to retrieve the key for (defaults to default provider)
    * @returns The decrypted API key or null if not found/expired
    * @throws ApiKeyStorageError if password is required but not provided or incorrect
    */
   async retrieveApiKey(
     password?: string,
-    provider: ApiProvider = this.defaultProvider
+    provider?: ApiProvider
   ): Promise<string | null> {
-    // Check for legacy keys and migrate if needed
-    this.checkAndMigrateLegacyKey();
+    // Get default provider ID if none specified
+    const defaultProviderId = this.providerRegistry.getDefaultProviderId();
+    const providerId = provider || defaultProviderId;
+    
+    // Get the provider implementation
+    const providerImpl = this.providerRegistry.getProvider(providerId);
+    if (!providerImpl) {
+      throw new ApiKeyStorageError(`Unsupported provider: ${providerId}`);
+    }
 
     // Check if the key has expired
-    if (this.hasExpired(provider)) {
-      this.clearApiKey(provider);
+    if (this.hasExpired(providerId)) {
+      this.clearApiKey(providerId);
       return null;
     }
 
     // Get the storage type being used
-    const storageType = this.getStorageType(provider);
+    const storageType = this.getStorageType(providerId);
     if (!storageType) {
       return null;
     }
@@ -406,17 +341,14 @@ export class WebApiKeyStorage implements ApiKeyStorage {
     const storage = this.getStorage(storageType);
 
     // Get provider-specific storage keys
-    const storageKey = this.getProviderKey(this.keyPatterns.storageKeyPattern, provider);
-    const protectedKey = this.getProviderKey(
-      this.keyPatterns.protectedKeyPattern,
-      provider
-    );
+    const storageKey = providerImpl.getStorageKey(this.keyPatterns.storageKeyPattern);
+    const protectedKey = providerImpl.getProtectedKey(this.keyPatterns.protectedKeyPattern);
 
     // Try to get the encrypted key
     let encryptedData = storage.getItem(storageKey);
 
-    // If not found, check legacy keys for 'mistral' provider (backward compatibility)
-    if (!encryptedData && provider === "mistral") {
+    // If not found, check legacy keys for default provider (backward compatibility)
+    if (!encryptedData && providerId === defaultProviderId) {
       encryptedData = storage.getItem(this.legacyKeys.legacyStorageKey);
 
       // If found in legacy, migrate it
@@ -439,9 +371,11 @@ export class WebApiKeyStorage implements ApiKeyStorage {
     }
 
     try {
-      return this.decryptApiKey(
+      return encryptionUtils.decryptApiKey(
         encryptedData,
-        isProtected ? password : undefined
+        isProtected ? password : encryptionUtils.getSessionKey(),
+        this.validateApiKey.bind(this),
+        defaultProviderId
       );
     } catch (error) {
       // Rethrow with a more user-friendly message
@@ -454,7 +388,7 @@ export class WebApiKeyStorage implements ApiKeyStorage {
   }
 
   /**
-   * Checks if an API key is stored in either storage
+   * Checks if an API key is stored for the specified provider
    * 
    * This method checks if an API key exists for the specified provider
    * in either localStorage or sessionStorage. If the provider is not specified,
@@ -466,12 +400,14 @@ export class WebApiKeyStorage implements ApiKeyStorage {
    * @returns true if an API key is stored, false otherwise
    */
   hasApiKey(provider?: ApiProvider): boolean {
-    // Check for legacy keys and migrate if needed
-    this.checkAndMigrateLegacyKey();
-
     // If provider is specified, check only that provider
     if (provider) {
-      const storageKey = this.getProviderKey(this.keyPatterns.storageKeyPattern, provider);
+      const providerImpl = this.providerRegistry.getProvider(provider);
+      if (!providerImpl) {
+        return false;
+      }
+
+      const storageKey = providerImpl.getStorageKey(this.keyPatterns.storageKeyPattern);
 
       // Check localStorage first
       if (localStorage.getItem(storageKey) !== null) {
@@ -488,9 +424,10 @@ export class WebApiKeyStorage implements ApiKeyStorage {
         return true;
       }
 
-      // For mistral, also check legacy keys
+      // For default provider, also check legacy keys
+      const defaultProviderId = this.providerRegistry.getDefaultProviderId();
       if (
-        provider === "mistral" &&
+        provider === defaultProviderId &&
         (localStorage.getItem(this.legacyKeys.legacyStorageKey) !== null ||
           sessionStorage.getItem(this.legacyKeys.legacyStorageKey) !== null)
       ) {
@@ -508,47 +445,44 @@ export class WebApiKeyStorage implements ApiKeyStorage {
    * Gets all providers that have stored API keys
    * 
    * This method returns an array of all providers that have active API keys
-   * stored in either localStorage or sessionStorage. It checks all known
-   * providers and also handles legacy keys for backward compatibility.
+   * stored in either localStorage or sessionStorage.
    * 
    * The method also handles expired keys, clearing them if found.
    * 
    * @returns Array of providers with stored API keys
    */
   getStoredProviders(): ApiProvider[] {
-    // Check for legacy keys and migrate if needed
-    this.checkAndMigrateLegacyKey();
-
     const providerSet = new Set<ApiProvider>();
+    const allProviders = this.providerRegistry.getAllProviders();
+    const defaultProviderId = this.providerRegistry.getDefaultProviderId();
 
-    // Check each known provider
-    const knownProviders: ApiProvider[] = ["mistral", "openai"];
-
-    for (const provider of knownProviders) {
-      const storageKey = this.getProviderKey(this.keyPatterns.storageKeyPattern, provider);
+    // Check each registered provider
+    for (const provider of allProviders) {
+      const providerId = provider.getProviderId();
+      const storageKey = provider.getStorageKey(this.keyPatterns.storageKeyPattern);
 
       // Check in localStorage
       if (localStorage.getItem(storageKey) !== null) {
         // If there's a key but it's expired, clear it and continue
-        if (this.hasExpired(provider)) {
-          this.clearApiKey(provider);
+        if (this.hasExpired(providerId)) {
+          this.clearApiKey(providerId);
           continue;
         }
-        providerSet.add(provider);
+        providerSet.add(providerId);
       }
 
       // Check in sessionStorage
       if (sessionStorage.getItem(storageKey) !== null) {
-        providerSet.add(provider);
+        providerSet.add(providerId);
       }
     }
 
-    // Also check legacy keys for 'mistral'
+    // Also check legacy keys for default provider
     if (
       localStorage.getItem(this.legacyKeys.legacyStorageKey) !== null ||
       sessionStorage.getItem(this.legacyKeys.legacyStorageKey) !== null
     ) {
-      providerSet.add("mistral");
+      providerSet.add(defaultProviderId);
     }
 
     return Array.from(providerSet);
@@ -558,24 +492,25 @@ export class WebApiKeyStorage implements ApiKeyStorage {
    * Validates if an API key has the correct format
    * 
    * This method checks if an API key matches the expected format for a specific
-   * provider using regular expression patterns defined for each provider.
+   * provider using the provider's implementation.
    * 
    * Different providers have different API key formats (e.g., OpenAI keys start
    * with "sk-", while Mistral keys have a different pattern).
    *
    * @param apiKey The API key to validate
-   * @param provider Optional provider to validate against (defaults to 'mistral')
+   * @param provider Optional provider to validate against (defaults to default provider)
    * @returns true if the API key has a valid format, false otherwise
    */
   validateApiKey(
     apiKey: string,
-    provider: ApiProvider = this.defaultProvider
+    provider: ApiProvider = this.providerRegistry.getDefaultProviderId()
   ): boolean {
-    // Get the validation pattern for the provider
-    const pattern = this.validationPatterns[provider];
+    const providerImpl = this.providerRegistry.getProvider(provider);
+    if (!providerImpl) {
+      return false;
+    }
 
-    // Perform validation of API key format
-    return pattern.test(apiKey);
+    return providerImpl.validateApiKey(apiKey);
   }
 
   /**
@@ -585,21 +520,22 @@ export class WebApiKeyStorage implements ApiKeyStorage {
    * is stored in localStorage or sessionStorage. It checks both storage
    * types and also handles legacy keys for backward compatibility.
    *
-   * @param provider Optional provider to check (defaults to 'mistral')
+   * @param provider Optional provider to check (defaults to default provider)
    * @returns The storage type being used or null if no key is stored
    */
   getStorageType(
-    provider: ApiProvider = this.defaultProvider
+    provider?: ApiProvider
   ): ApiKeyStorageType | null {
-    // Check for legacy keys and migrate if needed
-    this.checkAndMigrateLegacyKey();
+    const providerId = provider || this.providerRegistry.getDefaultProviderId();
+    const providerImpl = this.providerRegistry.getProvider(providerId);
+    
+    if (!providerImpl) {
+      return null;
+    }
 
-    // Get provider-specific storage key
-    const storageTypeKey = this.getProviderKey(
-      this.keyPatterns.storageTypeKeyPattern,
-      provider
-    );
-    const storageKey = this.getProviderKey(this.keyPatterns.storageKeyPattern, provider);
+    // Get provider-specific storage keys
+    const storageTypeKey = providerImpl.getStorageTypeKey(this.keyPatterns.storageTypeKeyPattern);
+    const storageKey = providerImpl.getStorageKey(this.keyPatterns.storageKeyPattern);
 
     // Check localStorage first for storage type
     const localStorageType = localStorage.getItem(
@@ -617,8 +553,9 @@ export class WebApiKeyStorage implements ApiKeyStorage {
       return sessionStorageType;
     }
 
-    // For mistral, also check legacy keys
-    if (provider === "mistral") {
+    // For default provider, also check legacy keys
+    const defaultProviderId = this.providerRegistry.getDefaultProviderId();
+    if (providerId === defaultProviderId) {
       // Check localStorage first for legacy storage type
       const legacyLocalStorageType = localStorage.getItem(
         this.legacyKeys.legacyStorageTypeKey
@@ -652,33 +589,35 @@ export class WebApiKeyStorage implements ApiKeyStorage {
    * for an API key stored for the specified provider. It checks the appropriate
    * storage based on where the key is stored and handles legacy keys.
    *
-   * @param provider Optional provider to check (defaults to 'mistral')
+   * @param provider Optional provider to check (defaults to default provider)
    * @returns The expiration setting or null if no key is stored
    */
   getExpiration(
-    provider: ApiProvider = this.defaultProvider
+    provider?: ApiProvider
   ): ApiKeyExpiration | null {
-    // Check for legacy keys and migrate if needed
-    this.checkAndMigrateLegacyKey();
-
-    const storageType = this.getStorageType(provider);
+    const providerId = provider || this.providerRegistry.getDefaultProviderId();
+    const storageType = this.getStorageType(providerId);
+    
     if (!storageType) {
       return null;
     }
 
     const storage = this.getStorage(storageType);
+    const providerImpl = this.providerRegistry.getProvider(providerId);
+    
+    if (!providerImpl) {
+      return null;
+    }
 
     // Get provider-specific storage key
-    const expirationKey = this.getProviderKey(
-      this.keyPatterns.expirationKeyPattern,
-      provider
-    );
+    const expirationKey = providerImpl.getExpirationKey(this.keyPatterns.expirationKeyPattern);
 
     // Try to get the expiration
     let expiration = storage.getItem(expirationKey) as ApiKeyExpiration | null;
 
-    // If not found and provider is mistral, check legacy keys
-    if (!expiration && provider === "mistral") {
+    // If not found and provider is default, check legacy keys
+    const defaultProviderId = this.providerRegistry.getDefaultProviderId();
+    if (!expiration && providerId === defaultProviderId) {
       expiration = storage.getItem(
         this.legacyKeys.legacyExpirationKey
       ) as ApiKeyExpiration | null;
@@ -694,19 +633,23 @@ export class WebApiKeyStorage implements ApiKeyStorage {
    * based on its expiration timestamp. Keys stored in sessionStorage never
    * "expire" in this check since they're automatically cleared when the session ends.
    *
-   * @param provider Optional provider to check (defaults to 'mistral')
+   * @param provider Optional provider to check (defaults to default provider)
    * @returns true if the API key has expired, false otherwise
    */
-  hasExpired(provider: ApiProvider = this.defaultProvider): boolean {
-    // Check for legacy keys and migrate if needed
-    this.checkAndMigrateLegacyKey();
-
-    const storageType = this.getStorageType(provider);
+  hasExpired(provider?: ApiProvider): boolean {
+    const providerId = provider || this.providerRegistry.getDefaultProviderId();
+    const storageType = this.getStorageType(providerId);
+    
     if (!storageType) {
       return false;
     }
 
     const storage = this.getStorage(storageType);
+    const providerImpl = this.providerRegistry.getProvider(providerId);
+    
+    if (!providerImpl) {
+      return false;
+    }
 
     // Session storage keys expire with the session, so they never "expire" while available
     if (storageType === "session") {
@@ -714,16 +657,16 @@ export class WebApiKeyStorage implements ApiKeyStorage {
     }
 
     // Get provider-specific storage key
-    const expirationTimeKey = this.getProviderKey(
-      this.keyPatterns.expirationTimeKeyPattern,
-      provider
+    const expirationTimeKey = providerImpl.getExpirationTimeKey(
+      this.keyPatterns.expirationTimeKeyPattern
     );
 
     // Try to get the expiration time
     let expirationTimeStr = storage.getItem(expirationTimeKey);
 
-    // If not found and provider is mistral, check legacy keys
-    if (!expirationTimeStr && provider === "mistral") {
+    // If not found and provider is default, check legacy keys
+    const defaultProviderId = this.providerRegistry.getDefaultProviderId();
+    if (!expirationTimeStr && providerId === defaultProviderId) {
       expirationTimeStr = storage.getItem(this.legacyKeys.legacyExpirationTimeKey);
     }
 
@@ -744,32 +687,34 @@ export class WebApiKeyStorage implements ApiKeyStorage {
    * It checks the appropriate storage based on where the key is stored
    * and handles legacy keys for backward compatibility.
    *
-   * @param provider Optional provider to check (defaults to 'mistral')
+   * @param provider Optional provider to check (defaults to default provider)
    * @returns true if the API key is password protected, false otherwise
    */
-  isPasswordProtected(provider: ApiProvider = this.defaultProvider): boolean {
-    // Check for legacy keys and migrate if needed
-    this.checkAndMigrateLegacyKey();
-
-    const storageType = this.getStorageType(provider);
+  isPasswordProtected(provider?: ApiProvider): boolean {
+    const providerId = provider || this.providerRegistry.getDefaultProviderId();
+    const storageType = this.getStorageType(providerId);
+    
     if (!storageType) {
       return false;
     }
 
     const storage = this.getStorage(storageType);
+    const providerImpl = this.providerRegistry.getProvider(providerId);
+    
+    if (!providerImpl) {
+      return false;
+    }
 
     // Get provider-specific storage key
-    const protectedKey = this.getProviderKey(
-      this.keyPatterns.protectedKeyPattern,
-      provider
-    );
+    const protectedKey = providerImpl.getProtectedKey(this.keyPatterns.protectedKeyPattern);
 
     // Try to get the protected status
     let isProtected = storage.getItem(protectedKey) === "true";
 
-    // If not found and provider is mistral, check legacy keys
+    // If not found and provider is default, check legacy keys
+    const defaultProviderId = this.providerRegistry.getDefaultProviderId();
     if (
-      provider === "mistral" &&
+      providerId === defaultProviderId &&
       storage.getItem(protectedKey) === null &&
       storage.getItem(this.legacyKeys.legacyProtectedKey) !== null
     ) {
@@ -794,78 +739,68 @@ export class WebApiKeyStorage implements ApiKeyStorage {
   clearApiKey(provider?: ApiProvider): void {
     // If provider is specified, clear only that provider
     if (provider) {
-      // Get provider-specific storage keys
-      const storageKey = this.getProviderKey(this.keyPatterns.storageKeyPattern, provider);
-      const protectedKey = this.getProviderKey(
-        this.keyPatterns.protectedKeyPattern,
-        provider
-      );
-      const storageTypeKey = this.getProviderKey(
-        this.keyPatterns.storageTypeKeyPattern,
-        provider
-      );
-      const expirationKey = this.getProviderKey(
-        this.keyPatterns.expirationKeyPattern,
-        provider
-      );
-      const expirationTimeKey = this.getProviderKey(
-        this.keyPatterns.expirationTimeKeyPattern,
-        provider
-      );
+      const providerImpl = this.providerRegistry.getProvider(provider);
+      
+      if (providerImpl) {
+        // Get provider-specific storage keys
+        const storageKey = providerImpl.getStorageKey(this.keyPatterns.storageKeyPattern);
+        const protectedKey = providerImpl.getProtectedKey(this.keyPatterns.protectedKeyPattern);
+        const storageTypeKey = providerImpl.getStorageTypeKey(this.keyPatterns.storageTypeKeyPattern);
+        const expirationKey = providerImpl.getExpirationKey(this.keyPatterns.expirationKeyPattern);
+        const expirationTimeKey = providerImpl.getExpirationTimeKey(this.keyPatterns.expirationTimeKeyPattern);
 
-      // Clear from localStorage
-      localStorage.removeItem(storageKey);
-      localStorage.removeItem(protectedKey);
-      localStorage.removeItem(storageTypeKey);
-      localStorage.removeItem(expirationKey);
-      localStorage.removeItem(expirationTimeKey);
-
-      // Clear from sessionStorage
-      sessionStorage.removeItem(storageKey);
-      sessionStorage.removeItem(protectedKey);
-      sessionStorage.removeItem(storageTypeKey);
-      sessionStorage.removeItem(expirationKey);
-      sessionStorage.removeItem(expirationTimeKey);
-
-      // If mistral, also clear legacy keys
-      if (provider === "mistral") {
         // Clear from localStorage
-        localStorage.removeItem(this.legacyKeys.legacyStorageKey);
-        localStorage.removeItem(this.legacyKeys.legacyProtectedKey);
-        localStorage.removeItem(this.legacyKeys.legacyStorageTypeKey);
-        localStorage.removeItem(this.legacyKeys.legacyExpirationKey);
-        localStorage.removeItem(this.legacyKeys.legacyExpirationTimeKey);
+        localStorage.removeItem(storageKey);
+        localStorage.removeItem(protectedKey);
+        localStorage.removeItem(storageTypeKey);
+        localStorage.removeItem(expirationKey);
+        localStorage.removeItem(expirationTimeKey);
 
         // Clear from sessionStorage
-        sessionStorage.removeItem(this.legacyKeys.legacyStorageKey);
-        sessionStorage.removeItem(this.legacyKeys.legacyProtectedKey);
-        sessionStorage.removeItem(this.legacyKeys.legacyStorageTypeKey);
-        sessionStorage.removeItem(this.legacyKeys.legacyExpirationKey);
-        sessionStorage.removeItem(this.legacyKeys.legacyExpirationTimeKey);
+        sessionStorage.removeItem(storageKey);
+        sessionStorage.removeItem(protectedKey);
+        sessionStorage.removeItem(storageTypeKey);
+        sessionStorage.removeItem(expirationKey);
+        sessionStorage.removeItem(expirationTimeKey);
+      }
+
+      // If default provider, also clear legacy keys
+      const defaultProviderId = this.providerRegistry.getDefaultProviderId();
+      if (provider === defaultProviderId) {
+        this.clearLegacyKeys();
       }
     } else {
       // Clear all providers
-      const knownProviders: ApiProvider[] = ["mistral", "openai"];
+      const allProviders = this.providerRegistry.getAllProviders();
 
       // Clear each provider individually
-      for (const provider of knownProviders) {
-        this.clearApiKey(provider);
+      for (const provider of allProviders) {
+        this.clearApiKey(provider.getProviderId());
       }
 
       // Also clear legacy keys (just to be safe)
-      // Clear from localStorage
-      localStorage.removeItem(this.legacyKeys.legacyStorageKey);
-      localStorage.removeItem(this.legacyKeys.legacyProtectedKey);
-      localStorage.removeItem(this.legacyKeys.legacyStorageTypeKey);
-      localStorage.removeItem(this.legacyKeys.legacyExpirationKey);
-      localStorage.removeItem(this.legacyKeys.legacyExpirationTimeKey);
-
-      // Clear from sessionStorage
-      sessionStorage.removeItem(this.legacyKeys.legacyStorageKey);
-      sessionStorage.removeItem(this.legacyKeys.legacyProtectedKey);
-      sessionStorage.removeItem(this.legacyKeys.legacyStorageTypeKey);
-      sessionStorage.removeItem(this.legacyKeys.legacyExpirationKey);
-      sessionStorage.removeItem(this.legacyKeys.legacyExpirationTimeKey);
+      this.clearLegacyKeys();
     }
   }
-}
+
+  /**
+   * Clears all legacy storage keys
+   * 
+   * Helper method to remove all legacy keys from both localStorage and sessionStorage.
+   * Used during migration and when clearing all API keys.
+   */
+  private clearLegacyKeys(): void {
+    // Clear from localStorage
+    localStorage.removeItem(this.legacyKeys.legacyStorageKey);
+    localStorage.removeItem(this.legacyKeys.legacyProtectedKey);
+    localStorage.removeItem(this.legacyKeys.legacyStorageTypeKey);
+    localStorage.removeItem(this.legacyKeys.legacyExpirationKey);
+    localStorage.removeItem(this.legacyKeys.legacyExpirationTimeKey);
+
+    // Clear from sessionStorage
+    sessionStorage.removeItem(this.legacyKeys.legacyStorageKey);
+    sessionStorage.removeItem(this.legacyKeys.legacyProtectedKey);
+    sessionStorage.removeItem(this.legacyKeys.legacyStorageTypeKey);
+    sessionStorage.removeItem(this.legacyKeys.legacyExpirationKey);
+    sessionStorage.removeItem(this.legacyKeys.legacyExpirationTimeKey);
+  }
