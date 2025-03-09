@@ -580,11 +580,11 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
             borderColor: "info.main",
           }}
         >
-          <Grid container spacing={2} alignItems="center">
+          <Typography variant="subtitle1" sx={{ mb: 0.5 }}>
+            Enter password to unlock your API key
+          </Typography>
+          <Grid container spacing={2} alignItems="flex-start">
             <Grid item xs={12} md={8}>
-              <Typography variant="subtitle1" sx={{ mb: 0.5 }}>
-                Enter password to unlock your API key
-              </Typography>
               <TextField
                 id="password"
                 type={state.showPassword ? "text" : "password"}
@@ -617,15 +617,30 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
             </Grid>
 
             <Grid item xs={12} md={4}>
-              <Button
-                onClick={handleSubmit}
-                variant="contained"
-                color="primary"
-                fullWidth
-                sx={{ mt: { xs: 0, md: 3 } }}
-              >
-                Unlock
-              </Button>
+              <Grid container spacing={1}>
+                <Grid item xs={6}>
+                  <Button
+                    onClick={handleSubmit}
+                    variant="contained"
+                    color="primary"
+                    fullWidth
+                    sx={{ height: "40px" }}
+                  >
+                    Unlock
+                  </Button>
+                </Grid>
+                <Grid item xs={6}>
+                  <Button
+                    onClick={clearApiKey}
+                    variant="outlined"
+                    color="error"
+                    fullWidth
+                    sx={{ height: "40px" }}
+                  >
+                    Clear Key
+                  </Button>
+                </Grid>
+              </Grid>
             </Grid>
           </Grid>
 
