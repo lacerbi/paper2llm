@@ -20,7 +20,9 @@ import {
   MenuItem,
   Grid,
   SelectChangeEvent,
+  Tooltip,
 } from "@mui/material";
+import InfoIcon from "@mui/icons-material/Info";
 import FileUploader from "./components/FileUploader";
 import ApiKeyManager from "./components/ApiKeyManager";
 import ProcessingStatus from "./components/ProcessingStatus";
@@ -244,11 +246,21 @@ const App: React.FC = () => {
                     target="_blank"
                     rel="noopener noreferrer"
                     style={{ color: theme.palette.primary.main }}
-                    title="Mistral AI offers a rate-limited free API tier"
                   >
                     your Mistral API key
                   </a>{" "}
-                  above.
+                  above.{" "}
+                  <Tooltip title="Mistral AI's free API tier (with usage limits) is compatible with paper2llm. We have no affiliation or financial relationship with Mistral AI.">
+                    <InfoIcon
+                      fontSize="small"
+                      color="action"
+                      sx={{
+                        verticalAlign: "middle",
+                        fontSize: "1rem",
+                        cursor: "help",
+                      }}
+                    />
+                  </Tooltip>
                 </Typography>
               </Paper>
             )}
