@@ -1,6 +1,7 @@
 // AI Summary: Implements secure API key storage using localStorage/sessionStorage with XOR encryption.
 // Requires password for persistent storage while using auto-generated keys for session storage.
 // Supports validation, storage, retrieval and API key management with improved security practices.
+// Includes key integrity verification to detect incorrect passwords and prevent returning corrupted keys.
 
 import { ApiKeyStorage, ApiKeyStorageType, ApiKeyExpiration, ApiKeyStorageOptions } from '../../types/interfaces';
 
@@ -46,6 +47,16 @@ const passwordValidation = {
 };
 
 /**
+ * Storage format for encrypted API keys
+ * Includes validation data to verify decryption with the correct password
+ */
+interface EncryptedKeyData {
+  encryptedKey: string;      // Base64 encoded XOR-encrypted API key
+  validation: string;        // Base64 encoded HMAC for validation
+  version: number;           // Storage format version for migrations
+}
+
+/**
  * Implements the ApiKeyStorage interface for web browsers
  * using localStorage or sessionStorage with encryption for secure storage
  */
@@ -59,6 +70,7 @@ export class WebApiKeyStorage implements ApiKeyStorage {
   
   // Validation
   private readonly validationRegex = /^[A-Za-z0-9-_]{32,64}$/; // Common format for API keys
+  private readonly storageVersion = 2; // Increment when storage format changes
 
   // Expiration durations in milliseconds
   private readonly expirationDurations: Record<ApiKeyExpiration, number> = {
@@ -78,19 +90,12 @@ export class WebApiKeyStorage implements ApiKeyStorage {
    * 
    * @param apiKey The API key to encrypt
    * @param password Optional user password (required for localStorage)
-   * @returns Encrypted API key as a Base64 string
+   * @returns Encrypted API key data structure
    */
   private encryptApiKey(apiKey: string, password?: string): string {
     // For session-based encryption (no password provided)
     if (!password) {
       password = this.getSessionKey();
-    }
-    
-    // Use a more secure encryption method when available
-    if (window.crypto && window.crypto.subtle && false) {
-      // Note: This is commented out as implementing proper crypto would require
-      // async/await and changes to the interface. This is a placeholder for future improvement.
-      // For production, a proper crypto implementation should be used
     }
     
     // Simple XOR encryption (enhanced version)
@@ -114,22 +119,151 @@ export class WebApiKeyStorage implements ApiKeyStorage {
       })
       .join('');
     
-    return btoa(encrypted); // Base64 encode for storage
+    // Create validation data (simple HMAC) for decryption verification
+    const validationSalt = this.generateValidationSalt();
+    const validationData = this.createValidationData(apiKey, password, validationSalt);
+    
+    // Create the storage structure
+    const encryptedData: EncryptedKeyData = {
+      encryptedKey: btoa(encrypted),
+      validation: btoa(JSON.stringify({
+        salt: validationSalt,
+        hmac: validationData
+      })),
+      version: this.storageVersion
+    };
+    
+    return btoa(JSON.stringify(encryptedData));
+  }
+
+  /**
+   * Generate a random salt for validation
+   */
+  private generateValidationSalt(): string {
+    if (window.crypto && window.crypto.getRandomValues) {
+      // Generate 8 random bytes using Web Crypto API
+      const randomBytes = new Uint8Array(8);
+      window.crypto.getRandomValues(randomBytes);
+      
+      // Convert to base64 string for storage
+      let binaryString = '';
+      for (let i = 0; i < randomBytes.length; i++) {
+        binaryString += String.fromCharCode(randomBytes[i]);
+      }
+      return btoa(binaryString);
+    } else {
+      // Fallback to less secure random generation
+      return Math.random().toString(36).substring(2, 10) + 
+             Math.random().toString(36).substring(2, 10);
+    }
+  }
+
+  /**
+   * Creates a validation hash from the API key and password
+   * This allows verification that decryption was performed with the correct password
+   */
+  private createValidationData(apiKey: string, password: string, salt: string): string {
+    // Simple HMAC-like function using the password and salt
+    const message = apiKey + salt;
+    let hmac = '';
+    
+    // Create a hash using password as the key
+    for (let i = 0; i < message.length; i++) {
+      const charCode = message.charCodeAt(i);
+      const keyChar = password.charCodeAt(i % password.length);
+      hmac += String.fromCharCode((charCode + keyChar) % 256);
+    }
+    
+    return btoa(hmac); // Base64 encode
   }
 
   /**
    * Decrypts the stored API key
+   * Added validation to detect incorrect passwords
    * 
-   * @param encryptedKey The encrypted API key (Base64 string)
+   * @param encryptedData The encrypted API key data (Base64 encoded JSON string)
    * @param password Optional user password (required if key was encrypted with password)
    * @returns The decrypted API key
+   * @throws ApiKeyStorageError if password is incorrect or data is corrupted
    */
-  private decryptApiKey(encryptedKey: string, password?: string): string {
+  private decryptApiKey(encryptedData: string, password?: string): string {
     if (!password) {
       // Use a session-based key if no password provided
       password = this.getSessionKey();
     }
     
+    try {
+      // Parse the encrypted data
+      const parsedData: EncryptedKeyData = JSON.parse(atob(encryptedData));
+      
+      // Handle legacy format migration (version 1 or undefined)
+      if (!parsedData.version || parsedData.version < 2) {
+        return this.decryptLegacyApiKey(parsedData.encryptedKey || encryptedData, password);
+      }
+      
+      const encryptedKey = parsedData.encryptedKey;
+      const validationInfo = JSON.parse(atob(parsedData.validation));
+      
+      // Step 1: Decrypt the key using XOR
+      const encrypted = atob(encryptedKey); // Base64 decode
+      
+      // Use the same repeating key technique for decryption
+      const keyLength = encrypted.length;
+      let repeatedKey = '';
+      
+      // Repeat the password to match the encrypted data length
+      while (repeatedKey.length < keyLength) {
+        repeatedKey += password;
+      }
+      
+      // Trim to exact length needed
+      repeatedKey = repeatedKey.substring(0, keyLength);
+      
+      // XOR decryption
+      const decrypted = Array.from(encrypted)
+        .map((char, i) => {
+          const keyChar = repeatedKey[i];
+          return String.fromCharCode(char.charCodeAt(0) ^ keyChar.charCodeAt(0));
+        })
+        .join('');
+      
+      // Step 2: Validate the decryption using validation data
+      const validationSalt = validationInfo.salt;
+      const storedValidation = validationInfo.hmac;
+      const calculatedValidation = this.createValidationData(decrypted, password, validationSalt);
+      
+      // If validation doesn't match, the password is incorrect
+      if (storedValidation !== calculatedValidation) {
+        throw new ApiKeyStorageError("Incorrect password. Please try again.");
+      }
+      
+      // Step 3: Verify decrypted value has valid API key format
+      if (!this.validateApiKey(decrypted)) {
+        throw new ApiKeyStorageError("Decryption produced an invalid API key. Please try again with the correct password.");
+      }
+      
+      return decrypted;
+    } catch (error) {
+      // Convert any JSON parsing errors to more user-friendly messages
+      if (error instanceof SyntaxError) {
+        throw new ApiKeyStorageError("Stored API key appears to be corrupted. You may need to clear it and enter a new key.");
+      }
+      
+      // Pass through ApiKeyStorageError instances
+      if (error instanceof ApiKeyStorageError) {
+        throw error;
+      }
+      
+      // Generic error
+      throw new ApiKeyStorageError("Failed to decrypt API key. Please check that your password is correct.");
+    }
+  }
+
+  /**
+   * Legacy decryption method for backward compatibility
+   * Used for keys stored with version 1 of the storage format
+   */
+  private decryptLegacyApiKey(encryptedKey: string, password: string): string {
     try {
       const encrypted = atob(encryptedKey); // Base64 decode
       
@@ -153,9 +287,17 @@ export class WebApiKeyStorage implements ApiKeyStorage {
         })
         .join('');
       
+      // Verify decrypted value has valid API key format
+      if (!this.validateApiKey(decrypted)) {
+        throw new ApiKeyStorageError("Incorrect password or corrupted storage. The decrypted value is not a valid API key.");
+      }
+      
       return decrypted;
     } catch (error) {
-      throw new ApiKeyStorageError("Failed to decrypt API key. If using localStorage, check that the password is correct.");
+      if (error instanceof ApiKeyStorageError) {
+        throw error;
+      }
+      throw new ApiKeyStorageError("Failed to decrypt legacy API key format. You may need to clear and re-enter your API key.");
     }
   }
 
@@ -252,10 +394,10 @@ export class WebApiKeyStorage implements ApiKeyStorage {
     }
     
     const storage = this.getStorage(storageType);
-    const encryptedKey = this.encryptApiKey(apiKey, password);
+    const encryptedKeyData = this.encryptApiKey(apiKey, password);
     
     // Store the encrypted key
-    storage.setItem(this.storageKey, encryptedKey);
+    storage.setItem(this.storageKey, encryptedKeyData);
     
     // Store metadata
     storage.setItem(this.protectedKey, password ? 'true' : 'false');
@@ -292,9 +434,9 @@ export class WebApiKeyStorage implements ApiKeyStorage {
     }
     
     const storage = this.getStorage(storageType);
-    const encryptedKey = storage.getItem(this.storageKey);
+    const encryptedData = storage.getItem(this.storageKey);
     
-    if (!encryptedKey) {
+    if (!encryptedData) {
       return null;
     }
     
@@ -306,7 +448,7 @@ export class WebApiKeyStorage implements ApiKeyStorage {
     }
     
     try {
-      return this.decryptApiKey(encryptedKey, isProtected ? password : undefined);
+      return this.decryptApiKey(encryptedData, isProtected ? password : undefined);
     } catch (error) {
       // Rethrow with a more user-friendly message
       if (error instanceof ApiKeyStorageError) {

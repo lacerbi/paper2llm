@@ -26,6 +26,7 @@ import {
   Tooltip,
   AlertTitle,
   SelectChangeEvent,
+  CircularProgress,
 } from "@mui/material";
 import {
   Visibility as VisibilityIcon,
@@ -68,6 +69,12 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
 
   // New state for password validation
   const [passwordError, setPasswordError] = useState<string | null>(null);
+  
+  // States for password retry mechanism
+  const [isLocked, setIsLocked] = useState<boolean>(false);
+  const [lockCountdown, setLockCountdown] = useState<number>(0);
+  const [incorrectAttempts, setIncorrectAttempts] = useState<number>(0);
+  const [isProcessing, setIsProcessing] = useState<boolean>(false);
 
   // Check if an API key is stored on component mount
   useEffect(() => {
@@ -150,6 +157,23 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
     }
   }, [state.isAuthenticated, state.apiKey, onApiKeyChange]);
 
+  // Countdown timer for lockout period
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    
+    if (lockCountdown > 0) {
+      timer = setTimeout(() => {
+        setLockCountdown(lockCountdown - 1);
+      }, 1000);
+      
+      return () => clearTimeout(timer);
+    } else if (lockCountdown === 0 && isLocked) {
+      setIsLocked(false);
+    }
+    
+    return undefined;
+  }, [lockCountdown, isLocked]);
+
   const handleApiKeyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setState((prevState) => ({
       ...prevState,
@@ -224,11 +248,31 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
     return true;
   };
 
+  // Apply temporary lock after multiple failed attempts
+  const applyTemporaryLock = () => {
+    const newAttempts = incorrectAttempts + 1;
+    setIncorrectAttempts(newAttempts);
+    
+    // Apply exponential backoff for repeated failures
+    if (newAttempts >= 3) {
+      const lockTime = Math.min(Math.pow(2, newAttempts - 2), 30); // Max 30 seconds
+      setIsLocked(true);
+      setLockCountdown(lockTime);
+      
+      setState((prevState) => ({
+        ...prevState,
+        error: `Too many failed attempts. Please wait ${lockTime} seconds before trying again.`
+      }));
+    }
+  };
+
   const storeApiKey = async () => {
     // Validate password requirements before proceeding
     if (!validatePasswordRequirements()) {
       return;
     }
+    
+    setIsProcessing(true);
 
     try {
       const options: ApiKeyStorageOptions = {
@@ -249,16 +293,41 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
         isAuthenticated: true,
         error: null,
       }));
+      
+      // Reset attempts on successful storage
+      setIncorrectAttempts(0);
     } catch (error) {
       setState((prevState) => ({
         ...prevState,
         error:
           error instanceof Error ? error.message : "Failed to store API key",
       }));
+    } finally {
+      setIsProcessing(false);
     }
   };
 
   const retrieveApiKey = useCallback(async () => {
+    // Don't proceed if locked
+    if (isLocked) {
+      return;
+    }
+    
+    // Pre-validate password if password protected
+    if (webApiKeyStorage.isPasswordProtected()) {
+      // Validate password according to the same requirements as when storing
+      if (!validatePasswordRequirements()) {
+        // Don't proceed with invalid password format
+        setState(prev => ({
+          ...prev,
+          error: passwordError || "Password does not meet the security requirements"
+        }));
+        return;
+      }
+    }
+
+    setIsProcessing(true);
+    
     try {
       const apiKey = await webApiKeyStorage.retrieveApiKey(
         webApiKeyStorage.isPasswordProtected() ? state.password : undefined
@@ -276,20 +345,43 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
             ? getPartiallyMaskedApiKey(apiKey)
             : getFullyMaskedApiKey(apiKey)
         );
+        
+        // Reset attempts on successful retrieval
+        setIncorrectAttempts(0);
       } else {
         setState((prevState) => ({
           ...prevState,
           error: "Failed to retrieve API key",
         }));
+        applyTemporaryLock();
       }
     } catch (error) {
-      setState((prevState) => ({
-        ...prevState,
-        error:
-          error instanceof Error ? error.message : "Failed to retrieve API key",
-      }));
+      // Handle specific known error types better
+      const errorMessage = error instanceof Error ? error.message : "Failed to retrieve API key";
+      
+      // Check for password-related errors
+      if (
+        errorMessage.includes("Incorrect password") || 
+        errorMessage.includes("password is required") ||
+        errorMessage.includes("invalid API key")
+      ) {
+        setState((prevState) => ({
+          ...prevState,
+          error: "Incorrect password. Please try again.",
+        }));
+        
+        // Apply temporary lock after repeated failures
+        applyTemporaryLock();
+      } else {
+        setState((prevState) => ({
+          ...prevState,
+          error: errorMessage,
+        }));
+      }
+    } finally {
+      setIsProcessing(false);
     }
-  }, [state.password]);
+  }, [state.password, state.showPassword, isLocked]);
 
   const clearApiKey = () => {
     webApiKeyStorage.clearApiKey();
@@ -306,6 +398,11 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
     // Reset security options to defaults
     setExpiration("session");
     setPasswordError(null);
+    
+    // Reset attempt counters
+    setIncorrectAttempts(0);
+    setIsLocked(false);
+    setLockCountdown(0);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -322,15 +419,35 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
 
   // Determine if the form can be submitted
   const canSubmit = () => {
+    // Prevent submission if locked or processing
+    if (isLocked || isProcessing) return false;
+    
     if (state.isStored && !state.isAuthenticated) {
       // For retrieving a stored key
-      return state.password.length > 0;
+      // Must have a password AND it must meet requirements if the key is password protected
+      if (!state.password || state.password.length === 0) return false;
+      
+      // If it's password protected, apply the same validation as when storing
+      if (webApiKeyStorage.isPasswordProtected()) {
+        // Check minimum length requirement
+        if (state.password.length < 8) return false;
+        
+        // Check character variety requirement
+        const hasLetters = /[a-zA-Z]/.test(state.password);
+        const hasDigits = /[0-9]/.test(state.password);
+        const hasSpecials = /[^a-zA-Z0-9]/.test(state.password);
+        
+        const charTypesCount = [hasLetters, hasDigits, hasSpecials].filter(Boolean).length;
+        if (charTypesCount < 2) return false;
+      }
+      
+      return true;
     } else {
       // For storing a new key
       if (!state.isValid) return false;
 
-      // For non-session storage, require password
-      if (expiration !== "session" && !state.password) return false;
+      // For non-session storage, require valid password
+      if (expiration !== "session" && (!state.password || passwordError)) return false;
 
       return true;
     }
@@ -350,8 +467,8 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
         onChange={handlePasswordChange}
         placeholder={isDisabled ? "Auto-generated" : "Enter password"}
         required={isRequired}
-        disabled={isDisabled}
-        error={!!passwordError}
+        disabled={isDisabled || isLocked}
+        error={!!passwordError || (state.error?.includes("password") || state.error?.includes("Password"))}
         helperText={passwordError}
         fullWidth
         size="small"
@@ -374,6 +491,7 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
                 onClick={toggleShowPassword}
                 edge="end"
                 size="small"
+                disabled={isLocked}
               >
                 {state.showPassword ? (
                   <VisibilityOffIcon />
@@ -386,6 +504,40 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
         }}
       />
     );
+  };
+
+  // Render a specific error or warning message for password-related issues
+  const renderPasswordErrorMessage = () => {
+    if (state.error && (
+        state.error.includes("password") || 
+        state.error.includes("Password") || 
+        state.error.includes("API key") ||
+        state.error.includes("Too many failed attempts")
+      )) {
+      return (
+        <Alert 
+          severity={isLocked ? "warning" : "error"} 
+          sx={{ mt: 1 }}
+          icon={isLocked ? <LockIcon /> : <ErrorIcon />}
+        >
+          <AlertTitle>{isLocked ? "Temporarily Locked" : "Authentication Failed"}</AlertTitle>
+          {state.error}
+          {isLocked && (
+            <Box sx={{ mt: 1 }}>
+              <Typography variant="body2">
+                Seconds remaining: {lockCountdown}
+              </Typography>
+            </Box>
+          )}
+        </Alert>
+      );
+    }
+    
+    return state.error ? (
+      <Alert severity="error" sx={{ mt: 1 }}>
+        {state.error}
+      </Alert>
+    ) : null;
   };
 
   return (
@@ -484,7 +636,7 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
                     type="submit"
                     variant="contained"
                     color="primary"
-                    disabled={!canSubmit()}
+                    disabled={!canSubmit() || isLocked || isProcessing}
                     fullWidth
                     size="small"
                     sx={{
@@ -493,7 +645,9 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
                       alignItems: "center",
                     }}
                   >
-                    {state.isStored ? "Unlock" : "Save"}
+                    {isProcessing ? (
+                      <CircularProgress size={24} color="inherit" />
+                    ) : state.isStored ? "Unlock" : "Save"}
                   </Button>
                 </Grid>
               </>
@@ -532,6 +686,7 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
                       onChange={handleExpirationChange}
                       size="small"
                       sx={{ minWidth: 150 }}
+                      disabled={isLocked}
                     >
                       <MenuItem value="session">Session only</MenuItem>
                       <MenuItem value="1day">1 Day</MenuItem>
@@ -564,9 +719,17 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
             </Box>
           )}
 
-          {state.error && (
-            <Alert severity="error" sx={{ mt: 1 }}>
-              {state.error}
+          {renderPasswordErrorMessage()}
+          
+          {/* Show password requirements when unlocking */}
+          {!state.error && webApiKeyStorage.isPasswordProtected() && state.password.length > 0 && !canSubmit() && (
+            <Alert severity="info" sx={{ mt: 2 }} icon={<LockIcon />}>
+              <AlertTitle>Password Requirements</AlertTitle>
+              Your API key is protected with a password that must meet these requirements:
+              <ul>
+                <li>At least 8 characters long</li>
+                <li>Must contain at least two different types of characters (letters, digits, special characters)</li>
+              </ul>
             </Alert>
           )}
         </Box>
@@ -577,7 +740,7 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
             p: 2,
             mb: 1,
             borderLeft: "4px solid",
-            borderColor: "info.main",
+            borderColor: state.error ? "error.main" : "info.main",
           }}
         >
           <Typography variant="subtitle1" sx={{ mb: 0.5 }}>
@@ -595,7 +758,15 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
                 fullWidth
                 size="small"
                 variant="outlined"
+                error={!!state.error || !!passwordError}
+                helperText={state.error ? null : passwordError}
+                disabled={isLocked || isProcessing}
                 InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <LockIcon color={state.error ? "error" : "primary"} fontSize="small" />
+                    </InputAdornment>
+                  ),
                   endAdornment: (
                     <InputAdornment position="end">
                       <IconButton
@@ -603,6 +774,7 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
                         onClick={toggleShowPassword}
                         edge="end"
                         size="small"
+                        disabled={isLocked}
                       >
                         {state.showPassword ? (
                           <VisibilityOffIcon />
@@ -625,8 +797,11 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
                     color="primary"
                     fullWidth
                     sx={{ height: "40px" }}
+                    disabled={!canSubmit() || isLocked || isProcessing}
                   >
-                    Unlock
+                    {isProcessing ? (
+                      <CircularProgress size={24} color="inherit" />
+                    ) : "Unlock"}
                   </Button>
                 </Grid>
                 <Grid item xs={6}>
@@ -636,6 +811,7 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
                     color="error"
                     fullWidth
                     sx={{ height: "40px" }}
+                    disabled={isProcessing}
                   >
                     Clear Key
                   </Button>
@@ -644,11 +820,7 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
             </Grid>
           </Grid>
 
-          {state.error && (
-            <Alert severity="error" sx={{ mt: 1 }}>
-              {state.error}
-            </Alert>
-          )}
+          {renderPasswordErrorMessage()}
         </Paper>
       )}
     </Box>
