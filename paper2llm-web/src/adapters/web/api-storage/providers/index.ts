@@ -14,10 +14,13 @@
  * by implementing the ApiKeyProvider interface.
  */
 
-// Export base provider class
-export { BaseProvider } from './base-provider';
+// Import provider implementations for use in factory function
+import { MistralProvider } from './mistral-provider';
+import { OpenAIProvider } from './openai-provider';
+import { BaseProvider } from './base-provider';
 
-// Export provider implementations
+// Export base provider class and implementations
+export { BaseProvider } from './base-provider';
 export { MistralProvider } from './mistral-provider';
 export { OpenAIProvider } from './openai-provider';
 

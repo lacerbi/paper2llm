@@ -239,7 +239,7 @@ export class WebApiKeyStorage implements ApiKeyStorage {
     try {
       return encryptionUtils.decryptApiKey(
         encryptedData,
-        isProtected ? password : encryptionUtils.getSessionKey(),
+        isProtected ? (password || '') : encryptionUtils.getSessionKey(),
         this.validateApiKey.bind(this),
         defaultProviderId
       );

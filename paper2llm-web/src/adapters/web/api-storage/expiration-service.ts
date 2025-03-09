@@ -4,7 +4,8 @@
 
 import { 
   ApiKeyExpiration,
-  ApiProvider
+  ApiProvider,
+  ApiKeyStorageType
 } from "../../../types/interfaces";
 import { ApiKeyProvider } from "./interfaces";
 import { StorageOperations } from "./storage-operations";
@@ -118,7 +119,7 @@ export class WebExpirationService implements ExpirationService {
     const expiration = this.storageOperations.getValue(
       "expirationKeyPattern",
       provider,
-      storageType
+      storageType as ApiKeyStorageType
     ) as ApiKeyExpiration | null;
 
     return expiration;
@@ -154,7 +155,7 @@ export class WebExpirationService implements ExpirationService {
     const expirationTimeStr = this.storageOperations.getValue(
       "expirationTimeKeyPattern",
       provider,
-      storageType
+      storageType as ApiKeyStorageType
     );
 
     if (!expirationTimeStr) {
@@ -195,7 +196,7 @@ export class WebExpirationService implements ExpirationService {
    * @param provider Provider to check
    * @returns Storage type or null if not found
    */
-  private getStorageTypeForProvider(provider: ApiProvider): string | null {
-    return this.storageOperations.getStorageTypeForProvider(provider);
+  private getStorageTypeForProvider(provider: ApiProvider): ApiKeyStorageType | null {
+    return this.storageOperations.getStorageTypeForProvider(provider) as ApiKeyStorageType | null;
   }
 }
