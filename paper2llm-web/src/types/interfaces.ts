@@ -125,7 +125,8 @@ export interface ApiKeyStorage {
 export interface ApiKeyManagerState {
   apiKey: string;
   password: string;
-  showPassword: boolean;
+  showPasswordField: boolean;
+  showApiKeyField: boolean;
   isStored: boolean;
   isValid: boolean;
   error: string | null;

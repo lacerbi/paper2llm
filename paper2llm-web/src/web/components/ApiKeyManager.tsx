@@ -54,7 +54,8 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
   const [state, setState] = useState<ApiKeyManagerState>({
     apiKey: "",
     password: "",
-    showPassword: false,
+    showPasswordField: false,
+    showApiKeyField: false,
     isStored: false,
     isValid: false,
     error: null,
@@ -147,7 +148,7 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
 
       // Update masked key for display
       setMaskedApiKey(
-        state.showPassword
+        state.showApiKeyField
           ? getPartiallyMaskedApiKey(state.apiKey)
           : getFullyMaskedApiKey(state.apiKey)
       );
@@ -193,16 +194,23 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
   };
 
   const toggleShowPassword = () => {
-    const newShowPassword = !state.showPassword;
     setState((prevState) => ({
       ...prevState,
-      showPassword: newShowPassword,
+      showPasswordField: !prevState.showPasswordField,
+    }));
+  };
+
+  const toggleShowApiKey = () => {
+    const newShowApiKeyField = !state.showApiKeyField;
+    setState((prevState) => ({
+      ...prevState,
+      showApiKeyField: newShowApiKeyField,
     }));
 
     // Update the masked key if authenticated
     if (state.isAuthenticated && state.apiKey) {
       setMaskedApiKey(
-        newShowPassword
+        newShowApiKeyField
           ? getPartiallyMaskedApiKey(state.apiKey)
           : getFullyMaskedApiKey(state.apiKey)
       );
@@ -341,7 +349,7 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
           error: null,
         }));
         setMaskedApiKey(
-          state.showPassword
+          state.showApiKeyField
             ? getPartiallyMaskedApiKey(apiKey)
             : getFullyMaskedApiKey(apiKey)
         );
@@ -381,14 +389,15 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
     } finally {
       setIsProcessing(false);
     }
-  }, [state.password, state.showPassword, isLocked]);
+  }, [state.password, state.showApiKeyField, isLocked]);
 
   const clearApiKey = () => {
     webApiKeyStorage.clearApiKey();
     setState({
       apiKey: "",
       password: "",
-      showPassword: false,
+      showPasswordField: false,
+      showApiKeyField: false,
       isStored: false,
       isValid: false,
       error: null,
@@ -462,7 +471,7 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
       <TextField
         id="password"
         label={isRequired ? "Password (Required)" : "Password (Not needed)"}
-        type={state.showPassword ? "text" : "password"}
+        type={state.showPasswordField ? "text" : "password"}
         value={state.password}
         onChange={handlePasswordChange}
         placeholder={isDisabled ? "Auto-generated" : "Enter password"}
@@ -493,7 +502,7 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
                 size="small"
                 disabled={isLocked}
               >
-                {state.showPassword ? (
+                {state.showPasswordField ? (
                   <VisibilityOffIcon />
                 ) : (
                   <VisibilityIcon />
@@ -577,7 +586,7 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
                 type={
                   state.isAuthenticated
                     ? "text"
-                    : state.showPassword
+                    : state.showApiKeyField
                     ? "text"
                     : "password"
                 }
@@ -594,11 +603,11 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
                     <InputAdornment position="end">
                       <IconButton
                         aria-label="toggle password visibility"
-                        onClick={toggleShowPassword}
+                        onClick={toggleShowApiKey}
                         edge="end"
                         size="small"
                       >
-                        {state.showPassword ? (
+                        {state.showApiKeyField ? (
                           <VisibilityOffIcon />
                         ) : (
                           <VisibilityIcon />
@@ -750,7 +759,7 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
             <Grid item xs={12} md={8}>
               <TextField
                 id="password"
-                type={state.showPassword ? "text" : "password"}
+                type={state.showPasswordField ? "text" : "password"}
                 value={state.password}
                 onChange={handlePasswordChange}
                 placeholder="Enter your password"
@@ -776,7 +785,7 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
                         size="small"
                         disabled={isLocked}
                       >
-                        {state.showPassword ? (
+                        {state.showPasswordField ? (
                           <VisibilityOffIcon />
                         ) : (
                           <VisibilityIcon />
