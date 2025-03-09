@@ -56,6 +56,11 @@ export interface FileUploaderState {
 }
 
 /**
+ * Supported API providers
+ */
+export type ApiProvider = 'mistral' | 'openai';
+
+/**
  * Storage type for API keys
  */
 export type ApiKeyStorageType = 'local' | 'session';
@@ -72,6 +77,7 @@ export interface ApiKeyStorageOptions {
   password?: string;
   storageType?: ApiKeyStorageType;
   expiration?: ApiKeyExpiration;
+  provider?: ApiProvider;
 }
 
 /**
@@ -85,52 +91,73 @@ export interface ApiKeyStorage {
   
   /**
    * Retrieves a stored API key
+   * @param password Optional password for decryption
+   * @param provider Optional provider to retrieve key for (defaults to 'mistral')
    */
-  retrieveApiKey(password?: string): Promise<string | null>;
+  retrieveApiKey(password?: string, provider?: ApiProvider): Promise<string | null>;
   
   /**
    * Checks if an API key is stored
+   * @param provider Optional provider to check (if not specified, checks any provider)
    */
-  hasApiKey(): boolean;
+  hasApiKey(provider?: ApiProvider): boolean;
   
   /**
    * Validates if an API key has the correct format
+   * @param apiKey The API key to validate
+   * @param provider Optional provider to validate format against (defaults to 'mistral')
    */
-  validateApiKey(apiKey: string): boolean;
+  validateApiKey(apiKey: string, provider?: ApiProvider): boolean;
   
   /**
    * Removes the stored API key
+   * @param provider Optional provider to clear (if not specified, clears all)
    */
-  clearApiKey(): void;
+  clearApiKey(provider?: ApiProvider): void;
   
   /**
    * Gets the storage type being used for the API key
+   * @param provider Optional provider to check (defaults to 'mistral')
    */
-  getStorageType(): ApiKeyStorageType | null;
+  getStorageType(provider?: ApiProvider): ApiKeyStorageType | null;
   
   /**
    * Gets the expiration setting for the stored API key
+   * @param provider Optional provider to check (defaults to 'mistral')
    */
-  getExpiration(): ApiKeyExpiration | null;
+  getExpiration(provider?: ApiProvider): ApiKeyExpiration | null;
   
   /**
    * Checks if the stored API key has expired
+   * @param provider Optional provider to check (defaults to 'mistral')
    */
-  hasExpired(): boolean;
+  hasExpired(provider?: ApiProvider): boolean;
+  
+  /**
+   * Gets all providers that have stored API keys
+   */
+  getStoredProviders(): ApiProvider[];
+
+  /**
+   * Checks if API key is password protected
+   * @param provider Optional provider to check (defaults to 'mistral')
+   */
+  isPasswordProtected(provider?: ApiProvider): boolean;
 }
 
 /**
  * Represents the state of the API key manager
  */
 export interface ApiKeyManagerState {
-  apiKey: string;
+  apiKeys: Record<ApiProvider, string>;
+  selectedProvider: ApiProvider;
   password: string;
   showPasswordField: boolean;
   showApiKeyField: boolean;
-  isStored: boolean;
-  isValid: boolean;
+  isStored: Record<ApiProvider, boolean>;
+  isValid: Record<ApiProvider, boolean>;
   error: string | null;
-  isAuthenticated: boolean;
+  isAuthenticated: Record<ApiProvider, boolean>;
 }
 
 /**
@@ -273,6 +300,26 @@ export interface PdfToMdResult {
     originalUrl?: string;
   };
   timestamp: string;
+}
+
+/**
+ * Provider-specific API key validation options
+ */
+export interface ProviderApiKeyInfo {
+  name: string;
+  description: string;
+  validationPattern: RegExp;
+  docsUrl: string;
+}
+
+/**
+ * Provider-specific model information
+ */
+export interface ProviderModelInfo {
+  id: string;
+  name: string;
+  description: string;
+  provider: ApiProvider;
 }
 
 /**

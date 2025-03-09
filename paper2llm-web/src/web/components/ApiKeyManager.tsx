@@ -1,6 +1,7 @@
-// AI Summary: React component for secure Mistral API key management.
+// AI Summary: React component for secure API key management across multiple providers.
 // Provides UI for entering, storing, and retrieving API keys with password protection,
-// storage type selection, and expiration options. Enforces password requirement for persistent storage.
+// storage type selection, provider selection, and expiration options.
+// Maintains a clean UI despite added complexity.
 
 import React, { useState, useEffect, useCallback } from "react";
 import {
@@ -27,6 +28,8 @@ import {
   AlertTitle,
   SelectChangeEvent,
   CircularProgress,
+  Tabs,
+  Tab,
 } from "@mui/material";
 import {
   Visibility as VisibilityIcon,
@@ -37,68 +40,131 @@ import {
   Info as InfoIcon,
   Error as ErrorIcon,
   Warning as WarningIcon,
+  SwapHoriz as SwapHorizIcon,
 } from "@mui/icons-material";
 import {
   ApiKeyManagerState,
   ApiKeyStorageOptions,
   ApiKeyExpiration,
+  ApiProvider,
+  ProviderApiKeyInfo,
 } from "../../types/interfaces";
-import { webApiKeyStorage } from "../../adapters/web/api-storage";
+import { WebApiKeyStorage } from "../../adapters/web/api-storage";
+
+// Create an instance of the WebApiKeyStorage
+const webApiKeyStorage = new WebApiKeyStorage();
+
+// Provider configurations with validation patterns and documentation links
+const PROVIDER_INFO: Record<ApiProvider, ProviderApiKeyInfo> = {
+  mistral: {
+    name: "Mistral AI",
+    description: "Required for both OCR and vision capabilities",
+    validationPattern: /^[A-Za-z0-9-_]{32,64}$/,
+    docsUrl: "https://console.mistral.ai/api-keys",
+  },
+  openai: {
+    name: "OpenAI",
+    description: "Optional, for enhanced vision capabilities",
+    validationPattern: /^sk-[A-Za-z0-9]{32,64}$/,
+    docsUrl: "https://platform.openai.com/api-keys",
+  },
+};
 
 interface ApiKeyManagerProps {
-  onApiKeyChange: (apiKey: string) => void;
+  onApiKeyChange: (apiKey: string, provider: ApiProvider) => void;
 }
 
 const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
   const theme = useTheme();
+
+  // Initialize state with default values for all providers
   const [state, setState] = useState<ApiKeyManagerState>({
-    apiKey: "",
+    apiKeys: {
+      mistral: "",
+      openai: "",
+    },
+    selectedProvider: "mistral", // Default to Mistral
     password: "",
     showPasswordField: false,
     showApiKeyField: false,
-    isStored: false,
-    isValid: false,
+    isStored: {
+      mistral: false,
+      openai: false,
+    },
+    isValid: {
+      mistral: false,
+      openai: false,
+    },
     error: null,
-    isAuthenticated: false,
+    isAuthenticated: {
+      mistral: false,
+      openai: false,
+    },
   });
 
-  // For UI display only - to mask the actual API key
-  const [maskedApiKey, setMaskedApiKey] = useState<string>("");
+  // For UI display only - to mask the actual API keys (per provider)
+  const [maskedApiKeys, setMaskedApiKeys] = useState<
+    Record<ApiProvider, string>
+  >({
+    mistral: "",
+    openai: "",
+  });
 
   // State for security options
   const [expiration, setExpiration] = useState<ApiKeyExpiration>("session");
 
   // New state for password validation
   const [passwordError, setPasswordError] = useState<string | null>(null);
-  
+
   // States for password retry mechanism
   const [isLocked, setIsLocked] = useState<boolean>(false);
   const [lockCountdown, setLockCountdown] = useState<number>(0);
   const [incorrectAttempts, setIncorrectAttempts] = useState<number>(0);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
 
-  // Check if an API key is stored on component mount
-  useEffect(() => {
-    const isStored = webApiKeyStorage.hasApiKey();
-    const isPasswordProtected = isStored
-      ? webApiKeyStorage.isPasswordProtected()
-      : false;
+  // Get the current provider
+  const currentProvider = state.selectedProvider;
+  const currentProviderInfo = PROVIDER_INFO[currentProvider];
 
-    setState((prevState) => ({
-      ...prevState,
-      isStored,
-      isAuthenticated: isStored && !isPasswordProtected,
+  // Check if any API keys are stored on component mount
+  useEffect(() => {
+    // Check for stored API keys for each provider
+    const storedProviders = webApiKeyStorage.getStoredProviders();
+
+    const newIsStored: Record<ApiProvider, boolean> = {
+      mistral: false,
+      openai: false,
+    };
+
+    const newIsAuthenticated: Record<ApiProvider, boolean> = {
+      mistral: false,
+      openai: false,
+    };
+
+    storedProviders.forEach((provider) => {
+      newIsStored[provider] = true;
+      // If the key doesn't require password, consider it authenticated
+      newIsAuthenticated[provider] =
+        !webApiKeyStorage.isPasswordProtected(provider);
+    });
+
+    setState((prev) => ({
+      ...prev,
+      isStored: newIsStored,
+      isAuthenticated: newIsAuthenticated,
     }));
 
-    // If there's a stored key that doesn't require a password, retrieve it
-    if (isStored && !isPasswordProtected) {
-      retrieveApiKey();
-    }
+    // Try to retrieve keys that don't require passwords
+    storedProviders.forEach((provider) => {
+      if (newIsAuthenticated[provider]) {
+        retrieveApiKey(provider);
+      }
+    });
 
     // Load existing expiration preference if available
-    if (isStored) {
-      const savedExpiration = webApiKeyStorage.getExpiration();
-
+    if (storedProviders.length > 0) {
+      const provider = storedProviders[0]; // Use first provider for expiration
+      const savedExpiration = webApiKeyStorage.getExpiration(provider);
       if (savedExpiration) {
         setExpiration(savedExpiration);
       }
@@ -107,27 +173,46 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
 
   // Validate API key format whenever it changes
   useEffect(() => {
-    if (state.apiKey) {
-      const isValid = webApiKeyStorage.validateApiKey(state.apiKey);
-      setState((prevState) => ({ ...prevState, isValid }));
+    const currentKey = state.apiKeys[currentProvider];
+    if (currentKey) {
+      const isValid = webApiKeyStorage.validateApiKey(
+        currentKey,
+        currentProvider
+      );
+      setState((prevState) => ({
+        ...prevState,
+        isValid: {
+          ...prevState.isValid,
+          [currentProvider]: isValid,
+        },
+      }));
     }
-  }, [state.apiKey]);
+  }, [state.apiKeys, currentProvider]);
 
   // Validate password requirements whenever expiration changes
   useEffect(() => {
     // Only validate when we have an API key to store
-    if (state.apiKey && !state.isAuthenticated) {
+    if (
+      state.apiKeys[currentProvider] &&
+      !state.isAuthenticated[currentProvider]
+    ) {
       validatePasswordRequirements();
     }
 
     // Clear password when expiration is set to session
-    if (expiration === "session" && !state.isAuthenticated) {
+    if (expiration === "session" && !state.isAuthenticated[currentProvider]) {
       setState((prev) => ({
         ...prev,
         password: "",
       }));
     }
-  }, [expiration, state.password, state.apiKey, state.isAuthenticated]);
+  }, [
+    expiration,
+    state.password,
+    state.apiKeys,
+    state.isAuthenticated,
+    currentProvider,
+  ]);
 
   // Helper functions to mask API key
   const getFullyMaskedApiKey = (key: string): string => {
@@ -143,42 +228,66 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
 
   // Pass the API key to the parent component when authenticated
   useEffect(() => {
-    if (state.isAuthenticated && state.apiKey) {
-      onApiKeyChange(state.apiKey);
+    Object.keys(state.isAuthenticated).forEach((provider) => {
+      const typedProvider = provider as ApiProvider;
+      if (
+        state.isAuthenticated[typedProvider] &&
+        state.apiKeys[typedProvider]
+      ) {
+        onApiKeyChange(state.apiKeys[typedProvider], typedProvider);
 
-      // Update masked key for display
-      setMaskedApiKey(
-        state.showApiKeyField
-          ? getPartiallyMaskedApiKey(state.apiKey)
-          : getFullyMaskedApiKey(state.apiKey)
-      );
-    } else if (!state.isAuthenticated) {
-      onApiKeyChange("");
-      setMaskedApiKey("");
-    }
-  }, [state.isAuthenticated, state.apiKey, onApiKeyChange]);
+        // Update masked key for display
+        setMaskedApiKeys((prev) => ({
+          ...prev,
+          [typedProvider]: state.showApiKeyField
+            ? getPartiallyMaskedApiKey(state.apiKeys[typedProvider])
+            : getFullyMaskedApiKey(state.apiKeys[typedProvider]),
+        }));
+      } else if (
+        !state.isAuthenticated[typedProvider] &&
+        typedProvider === currentProvider
+      ) {
+        // Only clear the API key callback if it's the current provider
+        onApiKeyChange("", typedProvider);
+
+        setMaskedApiKeys((prev) => ({
+          ...prev,
+          [typedProvider]: "",
+        }));
+      }
+    });
+  }, [
+    state.isAuthenticated,
+    state.apiKeys,
+    state.showApiKeyField,
+    currentProvider,
+    onApiKeyChange,
+  ]);
 
   // Countdown timer for lockout period
   useEffect(() => {
     let timer: NodeJS.Timeout;
-    
+
     if (lockCountdown > 0) {
       timer = setTimeout(() => {
         setLockCountdown(lockCountdown - 1);
       }, 1000);
-      
+
       return () => clearTimeout(timer);
     } else if (lockCountdown === 0 && isLocked) {
       setIsLocked(false);
     }
-    
+
     return undefined;
   }, [lockCountdown, isLocked]);
 
   const handleApiKeyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setState((prevState) => ({
       ...prevState,
-      apiKey: e.target.value,
+      apiKeys: {
+        ...prevState.apiKeys,
+        [currentProvider]: e.target.value,
+      },
       error: null,
     }));
   };
@@ -207,19 +316,37 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
       showApiKeyField: newShowApiKeyField,
     }));
 
-    // Update the masked key if authenticated
-    if (state.isAuthenticated && state.apiKey) {
-      setMaskedApiKey(
-        newShowApiKeyField
-          ? getPartiallyMaskedApiKey(state.apiKey)
-          : getFullyMaskedApiKey(state.apiKey)
-      );
-    }
+    // Update masked keys for all authenticated providers
+    Object.keys(state.isAuthenticated).forEach((provider) => {
+      const typedProvider = provider as ApiProvider;
+      if (
+        state.isAuthenticated[typedProvider] &&
+        state.apiKeys[typedProvider]
+      ) {
+        setMaskedApiKeys((prev) => ({
+          ...prev,
+          [typedProvider]: newShowApiKeyField
+            ? getPartiallyMaskedApiKey(state.apiKeys[typedProvider])
+            : getFullyMaskedApiKey(state.apiKeys[typedProvider]),
+        }));
+      }
+    });
   };
 
   const handleExpirationChange = (event: SelectChangeEvent) => {
     setExpiration(event.target.value as ApiKeyExpiration);
     // Password validation will be triggered by the useEffect
+  };
+
+  const handleProviderChange = (
+    event: React.SyntheticEvent,
+    newProvider: ApiProvider
+  ) => {
+    setState((prevState) => ({
+      ...prevState,
+      selectedProvider: newProvider,
+      error: null,
+    }));
   };
 
   // Validate password based on expiration type and security requirements
@@ -233,22 +360,26 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
         setPasswordError("Password is required for persistent storage");
         return false;
       }
-      
+
       // Check minimum length requirement
       if (state.password.length < 8) {
         setPasswordError("Password must be at least 8 characters long");
         return false;
       }
-      
+
       // Check character variety requirement
       const hasLetters = /[a-zA-Z]/.test(state.password);
       const hasDigits = /[0-9]/.test(state.password);
       const hasSpecials = /[^a-zA-Z0-9]/.test(state.password);
-      
-      const charTypesCount = [hasLetters, hasDigits, hasSpecials].filter(Boolean).length;
-      
+
+      const charTypesCount = [hasLetters, hasDigits, hasSpecials].filter(
+        Boolean
+      ).length;
+
       if (charTypesCount < 2) {
-        setPasswordError("Password must contain at least two different types of characters (letters, digits, or special characters)");
+        setPasswordError(
+          "Password must contain at least two different types of characters (letters, digits, or special characters)"
+        );
         return false;
       }
     }
@@ -260,16 +391,16 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
   const applyTemporaryLock = () => {
     const newAttempts = incorrectAttempts + 1;
     setIncorrectAttempts(newAttempts);
-    
+
     // Apply exponential backoff for repeated failures
     if (newAttempts >= 3) {
       const lockTime = Math.min(Math.pow(2, newAttempts - 2), 30); // Max 30 seconds
       setIsLocked(true);
       setLockCountdown(lockTime);
-      
+
       setState((prevState) => ({
         ...prevState,
-        error: `Too many failed attempts. Please wait ${lockTime} seconds before trying again.`
+        error: `Too many failed attempts. Please wait ${lockTime} seconds before trying again.`,
       }));
     }
   };
@@ -279,13 +410,14 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
     if (!validatePasswordRequirements()) {
       return;
     }
-    
+
     setIsProcessing(true);
 
     try {
       const options: ApiKeyStorageOptions = {
         storageType: expiration === "session" ? "session" : "local",
         expiration: expiration,
+        provider: currentProvider,
       };
 
       // Only include password if it's provided
@@ -293,15 +425,24 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
         options.password = state.password;
       }
 
-      await webApiKeyStorage.storeApiKey(state.apiKey, options);
+      await webApiKeyStorage.storeApiKey(
+        state.apiKeys[currentProvider],
+        options
+      );
 
       setState((prevState) => ({
         ...prevState,
-        isStored: true,
-        isAuthenticated: true,
+        isStored: {
+          ...prevState.isStored,
+          [currentProvider]: true,
+        },
+        isAuthenticated: {
+          ...prevState.isAuthenticated,
+          [currentProvider]: true,
+        },
         error: null,
       }));
-      
+
       // Reset attempts on successful storage
       setIncorrectAttempts(0);
     } catch (error) {
@@ -315,109 +456,152 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
     }
   };
 
-  const retrieveApiKey = useCallback(async () => {
-    // Don't proceed if locked
-    if (isLocked) {
-      return;
-    }
-    
-    // Pre-validate password if password protected
-    if (webApiKeyStorage.isPasswordProtected()) {
-      // Validate password according to the same requirements as when storing
-      if (!validatePasswordRequirements()) {
-        // Don't proceed with invalid password format
-        setState(prev => ({
-          ...prev,
-          error: passwordError || "Password does not meet the security requirements"
-        }));
+  const retrieveApiKey = useCallback(
+    async (provider?: ApiProvider) => {
+      const targetProvider = provider || currentProvider;
+
+      // Don't proceed if locked
+      if (isLocked) {
         return;
       }
-    }
 
-    setIsProcessing(true);
-    
-    try {
-      const apiKey = await webApiKeyStorage.retrieveApiKey(
-        webApiKeyStorage.isPasswordProtected() ? state.password : undefined
-      );
+      // Pre-validate password if password protected
+      if (webApiKeyStorage.isPasswordProtected(targetProvider)) {
+        // Validate password according to the same requirements as when storing
+        if (!validatePasswordRequirements()) {
+          // Don't proceed with invalid password format
+          setState((prev) => ({
+            ...prev,
+            error:
+              passwordError ||
+              "Password does not meet the security requirements",
+          }));
+          return;
+        }
+      }
 
-      if (apiKey) {
-        setState((prevState) => ({
-          ...prevState,
-          apiKey,
-          isAuthenticated: true,
-          error: null,
-        }));
-        setMaskedApiKey(
-          state.showApiKeyField
-            ? getPartiallyMaskedApiKey(apiKey)
-            : getFullyMaskedApiKey(apiKey)
+      setIsProcessing(true);
+
+      try {
+        const apiKey = await webApiKeyStorage.retrieveApiKey(
+          webApiKeyStorage.isPasswordProtected(targetProvider)
+            ? state.password
+            : undefined,
+          targetProvider
         );
-        
-        // Reset attempts on successful retrieval
-        setIncorrectAttempts(0);
-      } else {
-        setState((prevState) => ({
-          ...prevState,
-          error: "Failed to retrieve API key",
-        }));
-        applyTemporaryLock();
-      }
-    } catch (error) {
-      // Handle specific known error types better
-      const errorMessage = error instanceof Error ? error.message : "Failed to retrieve API key";
-      
-      // Check for password-related errors
-      if (
-        errorMessage.includes("Incorrect password") || 
-        errorMessage.includes("password is required") ||
-        errorMessage.includes("invalid API key")
-      ) {
-        setState((prevState) => ({
-          ...prevState,
-          error: "Incorrect password. Please try again.",
-        }));
-        
-        // Apply temporary lock after repeated failures
-        applyTemporaryLock();
-      } else {
-        setState((prevState) => ({
-          ...prevState,
-          error: errorMessage,
-        }));
-      }
-    } finally {
-      setIsProcessing(false);
-    }
-  }, [state.password, state.showApiKeyField, isLocked]);
 
-  const clearApiKey = () => {
-    webApiKeyStorage.clearApiKey();
-    setState({
-      apiKey: "",
+        if (apiKey) {
+          setState((prevState) => ({
+            ...prevState,
+            apiKeys: {
+              ...prevState.apiKeys,
+              [targetProvider]: apiKey,
+            },
+            isAuthenticated: {
+              ...prevState.isAuthenticated,
+              [targetProvider]: true,
+            },
+            error: null,
+          }));
+
+          setMaskedApiKeys((prev) => ({
+            ...prev,
+            [targetProvider]: state.showApiKeyField
+              ? getPartiallyMaskedApiKey(apiKey)
+              : getFullyMaskedApiKey(apiKey),
+          }));
+
+          // Reset attempts on successful retrieval
+          setIncorrectAttempts(0);
+        } else {
+          setState((prevState) => ({
+            ...prevState,
+            error: "Failed to retrieve API key",
+          }));
+          applyTemporaryLock();
+        }
+      } catch (error) {
+        // Handle specific known error types better
+        const errorMessage =
+          error instanceof Error ? error.message : "Failed to retrieve API key";
+
+        // Check for password-related errors
+        if (
+          errorMessage.includes("Incorrect password") ||
+          errorMessage.includes("password is required") ||
+          errorMessage.includes("invalid API key")
+        ) {
+          setState((prevState) => ({
+            ...prevState,
+            error: "Incorrect password. Please try again.",
+          }));
+
+          // Apply temporary lock after repeated failures
+          applyTemporaryLock();
+        } else {
+          setState((prevState) => ({
+            ...prevState,
+            error: errorMessage,
+          }));
+        }
+      } finally {
+        setIsProcessing(false);
+      }
+    },
+    [state.password, state.showApiKeyField, isLocked, currentProvider]
+  );
+
+  const clearApiKey = (provider?: ApiProvider) => {
+    const targetProvider = provider || currentProvider;
+
+    webApiKeyStorage.clearApiKey(targetProvider);
+
+    setState((prevState) => ({
+      ...prevState,
+      apiKeys: {
+        ...prevState.apiKeys,
+        [targetProvider]: "",
+      },
       password: "",
-      showPasswordField: false,
-      showApiKeyField: false,
-      isStored: false,
-      isValid: false,
+      isStored: {
+        ...prevState.isStored,
+        [targetProvider]: false,
+      },
+      isValid: {
+        ...prevState.isValid,
+        [targetProvider]: false,
+      },
+      isAuthenticated: {
+        ...prevState.isAuthenticated,
+        [targetProvider]: false,
+      },
       error: null,
-      isAuthenticated: false,
-    });
+    }));
 
-    // Reset security options to defaults
-    setExpiration("session");
-    setPasswordError(null);
-    
-    // Reset attempt counters
-    setIncorrectAttempts(0);
-    setIsLocked(false);
-    setLockCountdown(0);
+    setMaskedApiKeys((prev) => ({
+      ...prev,
+      [targetProvider]: "",
+    }));
+
+    // Reset security options to defaults if clearing current provider
+    if (targetProvider === currentProvider) {
+      setExpiration("session");
+      setPasswordError(null);
+
+      // Reset attempt counters
+      setIncorrectAttempts(0);
+      setIsLocked(false);
+      setLockCountdown(0);
+    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (state.isStored && !state.isAuthenticated) {
+    if (
+      state.isStored[currentProvider] &&
+      !state.isAuthenticated[currentProvider]
+    ) {
       // User is trying to access a stored key
       retrieveApiKey();
     } else {
@@ -430,33 +614,39 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
   const canSubmit = () => {
     // Prevent submission if locked or processing
     if (isLocked || isProcessing) return false;
-    
-    if (state.isStored && !state.isAuthenticated) {
+
+    if (
+      state.isStored[currentProvider] &&
+      !state.isAuthenticated[currentProvider]
+    ) {
       // For retrieving a stored key
       // Must have a password AND it must meet requirements if the key is password protected
       if (!state.password || state.password.length === 0) return false;
-      
+
       // If it's password protected, apply the same validation as when storing
-      if (webApiKeyStorage.isPasswordProtected()) {
+      if (webApiKeyStorage.isPasswordProtected(currentProvider)) {
         // Check minimum length requirement
         if (state.password.length < 8) return false;
-        
+
         // Check character variety requirement
         const hasLetters = /[a-zA-Z]/.test(state.password);
         const hasDigits = /[0-9]/.test(state.password);
         const hasSpecials = /[^a-zA-Z0-9]/.test(state.password);
-        
-        const charTypesCount = [hasLetters, hasDigits, hasSpecials].filter(Boolean).length;
+
+        const charTypesCount = [hasLetters, hasDigits, hasSpecials].filter(
+          Boolean
+        ).length;
         if (charTypesCount < 2) return false;
       }
-      
+
       return true;
     } else {
       // For storing a new key
-      if (!state.isValid) return false;
+      if (!state.isValid[currentProvider]) return false;
 
       // For non-session storage, require valid password
-      if (expiration !== "session" && (!state.password || passwordError)) return false;
+      if (expiration !== "session" && (!state.password || passwordError))
+        return false;
 
       return true;
     }
@@ -477,7 +667,11 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
         placeholder={isDisabled ? "Auto-generated" : "Enter password"}
         required={isRequired}
         disabled={isDisabled || isLocked}
-        error={!!passwordError || (state.error?.includes("password") || state.error?.includes("Password"))}
+        error={
+          !!passwordError ||
+          state.error?.includes("password") ||
+          state.error?.includes("Password")
+        }
         helperText={passwordError}
         fullWidth
         size="small"
@@ -517,19 +711,22 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
 
   // Render a specific error or warning message for password-related issues
   const renderPasswordErrorMessage = () => {
-    if (state.error && (
-        state.error.includes("password") || 
-        state.error.includes("Password") || 
+    if (
+      state.error &&
+      (state.error.includes("password") ||
+        state.error.includes("Password") ||
         state.error.includes("API key") ||
-        state.error.includes("Too many failed attempts")
-      )) {
+        state.error.includes("Too many failed attempts"))
+    ) {
       return (
-        <Alert 
-          severity={isLocked ? "warning" : "error"} 
+        <Alert
+          severity={isLocked ? "warning" : "error"}
           sx={{ mt: 1 }}
           icon={isLocked ? <LockIcon /> : <ErrorIcon />}
         >
-          <AlertTitle>{isLocked ? "Temporarily Locked" : "Authentication Failed"}</AlertTitle>
+          <AlertTitle>
+            {isLocked ? "Temporarily Locked" : "Authentication Failed"}
+          </AlertTitle>
           {state.error}
           {isLocked && (
             <Box sx={{ mt: 1 }}>
@@ -541,7 +738,7 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
         </Alert>
       );
     }
-    
+
     return state.error ? (
       <Alert severity="error" sx={{ mt: 1 }}>
         {state.error}
@@ -551,24 +748,26 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
 
   return (
     <Box sx={{ mb: 2 }}>
-      {/* Compact header with API status */}
+      {/* Compact header with provider tabs and API status */}
       <Stack
         direction="row"
         alignItems="center"
         justifyContent="space-between"
-        sx={{ mb: 2 }}
+        sx={{ mb: 1 }}
       >
         <Box sx={{ display: "flex", alignItems: "center" }}>
           <KeyIcon sx={{ mr: 1, color: "primary.main" }} />
           <Typography variant="h6" component="h2">
-            Mistral AI API Key
+            API Keys
           </Typography>
         </Box>
 
-        {state.isAuthenticated && (
+        {Object.keys(state.isAuthenticated).some(
+          (p) => state.isAuthenticated[p as ApiProvider]
+        ) && (
           <Chip
             icon={<CheckIcon />}
-            label="API Key Active"
+            label="API Keys Active"
             color="success"
             size="small"
             variant="outlined"
@@ -576,33 +775,73 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
         )}
       </Stack>
 
-      {!state.isStored || state.isAuthenticated ? (
+      {/* Provider selection tabs */}
+      <Tabs
+        value={currentProvider}
+        onChange={handleProviderChange}
+        sx={{ mb: 2, borderBottom: 1, borderColor: "divider" }}
+      >
+        {Object.entries(PROVIDER_INFO).map(([provider, info]) => (
+          <Tab
+            key={provider}
+            value={provider}
+            label={
+              <Box sx={{ display: "flex", alignItems: "center" }}>
+                {info.name}
+                {state.isAuthenticated[provider as ApiProvider] && (
+                  <CheckIcon
+                    sx={{ ml: 1, fontSize: "0.9rem", color: "success.main" }}
+                  />
+                )}
+              </Box>
+            }
+          />
+        ))}
+      </Tabs>
+
+      {!state.isStored[currentProvider] ||
+      state.isAuthenticated[currentProvider] ? (
         <Box component="form" onSubmit={handleSubmit} sx={{ width: "100%" }}>
           <Grid container spacing={2} alignItems="flex-start">
-            <Grid item xs={12} md={state.isAuthenticated ? 10 : 6}>
+            <Grid
+              item
+              xs={12}
+              md={state.isAuthenticated[currentProvider] ? 10 : 6}
+            >
               <TextField
                 id="apiKey"
-                label="API Key"
+                label={`${currentProviderInfo.name} API Key`}
                 type={
-                  state.isAuthenticated
+                  state.isAuthenticated[currentProvider]
                     ? "text"
                     : state.showApiKeyField
                     ? "text"
                     : "password"
                 }
-                value={state.isAuthenticated ? maskedApiKey : state.apiKey}
+                value={
+                  state.isAuthenticated[currentProvider]
+                    ? maskedApiKeys[currentProvider]
+                    : state.apiKeys[currentProvider]
+                }
                 onChange={handleApiKeyChange}
-                placeholder="Enter your Mistral API key"
-                disabled={state.isAuthenticated}
+                placeholder={`Enter your ${currentProviderInfo.name} API key`}
+                disabled={state.isAuthenticated[currentProvider]}
                 required
                 fullWidth
                 size="small"
                 variant="outlined"
                 InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <Tooltip title={currentProviderInfo.description}>
+                        <InfoIcon fontSize="small" color="action" />
+                      </Tooltip>
+                    </InputAdornment>
+                  ),
                   endAdornment: (
                     <InputAdornment position="end">
                       <IconButton
-                        aria-label="toggle password visibility"
+                        aria-label="toggle API key visibility"
                         onClick={toggleShowApiKey}
                         edge="end"
                         size="small"
@@ -617,12 +856,22 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
                   ),
                 }}
               />
+              <FormHelperText>
+                <a
+                  href={currentProviderInfo.docsUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ color: theme.palette.primary.main }}
+                >
+                  {"Get " + currentProviderInfo.name + " API key"}
+                </a>
+              </FormHelperText>
             </Grid>
 
-            {state.isAuthenticated && (
+            {state.isAuthenticated[currentProvider] && (
               <Grid item xs={12} md={2}>
                 <Button
-                  onClick={clearApiKey}
+                  onClick={() => clearApiKey()}
                   variant="outlined"
                   color="error"
                   size="small"
@@ -634,7 +883,7 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
               </Grid>
             )}
 
-            {!state.isAuthenticated && (
+            {!state.isAuthenticated[currentProvider] && (
               <>
                 <Grid item xs={12} md={4}>
                   {renderPasswordField()}
@@ -656,7 +905,11 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
                   >
                     {isProcessing ? (
                       <CircularProgress size={24} color="inherit" />
-                    ) : state.isStored ? "Unlock" : "Save"}
+                    ) : state.isStored[currentProvider] ? (
+                      "Unlock"
+                    ) : (
+                      "Save"
+                    )}
                   </Button>
                 </Grid>
               </>
@@ -664,7 +917,7 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
           </Grid>
 
           {/* Security Options (only shown when not authenticated) */}
-          {!state.isAuthenticated && (
+          {!state.isAuthenticated[currentProvider] && (
             <Box sx={{ mt: 2, mb: 1 }}>
               <Grid
                 container
@@ -714,33 +967,45 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
               </Grid>
 
               {/* Security Warning - show password requirements for persistent storage */}
-              {expiration !== "session" && (!state.password || passwordError) && (
-                <Alert severity="warning" sx={{ mt: 2 }} icon={<LockIcon />}>
-                  <AlertTitle>Password Requirements</AlertTitle>
-                  A strong password is required when storing API keys persistently:
-                  <ul>
-                    <li>At least 8 characters long</li>
-                    <li>Must contain at least two different types of characters (letters, digits, special characters)</li>
-                  </ul>
-                  This ensures your API key remains securely encrypted between browser sessions.
-                </Alert>
-              )}
+              {expiration !== "session" &&
+                (!state.password || passwordError) && (
+                  <Alert severity="warning" sx={{ mt: 2 }} icon={<LockIcon />}>
+                    <AlertTitle>Password Requirements</AlertTitle>A strong
+                    password is required when storing API keys persistently:
+                    <ul>
+                      <li>At least 8 characters long</li>
+                      <li>
+                        Must contain at least two different types of characters
+                        (letters, digits, special characters)
+                      </li>
+                    </ul>
+                    This ensures your API key remains securely encrypted between
+                    browser sessions.
+                  </Alert>
+                )}
             </Box>
           )}
 
           {renderPasswordErrorMessage()}
-          
+
           {/* Show password requirements when unlocking */}
-          {!state.error && webApiKeyStorage.isPasswordProtected() && state.password.length > 0 && !canSubmit() && (
-            <Alert severity="info" sx={{ mt: 2 }} icon={<LockIcon />}>
-              <AlertTitle>Password Requirements</AlertTitle>
-              Your API key is protected with a password that must meet these requirements:
-              <ul>
-                <li>At least 8 characters long</li>
-                <li>Must contain at least two different types of characters (letters, digits, special characters)</li>
-              </ul>
-            </Alert>
-          )}
+          {!state.error &&
+            webApiKeyStorage.isPasswordProtected(currentProvider) &&
+            state.password.length > 0 &&
+            !canSubmit() && (
+              <Alert severity="info" sx={{ mt: 2 }} icon={<LockIcon />}>
+                <AlertTitle>Password Requirements</AlertTitle>
+                Your API key is protected with a password that must meet these
+                requirements:
+                <ul>
+                  <li>At least 8 characters long</li>
+                  <li>
+                    Must contain at least two different types of characters
+                    (letters, digits, special characters)
+                  </li>
+                </ul>
+              </Alert>
+            )}
         </Box>
       ) : (
         <Paper
@@ -753,7 +1018,7 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
           }}
         >
           <Typography variant="subtitle1" sx={{ mb: 0.5 }}>
-            Enter password to unlock your API key
+            Enter password to unlock your {currentProviderInfo.name} API key
           </Typography>
           <Grid container spacing={2} alignItems="flex-start">
             <Grid item xs={12} md={8}>
@@ -773,7 +1038,10 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
                 InputProps={{
                   startAdornment: (
                     <InputAdornment position="start">
-                      <LockIcon color={state.error ? "error" : "primary"} fontSize="small" />
+                      <LockIcon
+                        color={state.error ? "error" : "primary"}
+                        fontSize="small"
+                      />
                     </InputAdornment>
                   ),
                   endAdornment: (
@@ -810,12 +1078,14 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
                   >
                     {isProcessing ? (
                       <CircularProgress size={24} color="inherit" />
-                    ) : "Unlock"}
+                    ) : (
+                      "Unlock"
+                    )}
                   </Button>
                 </Grid>
                 <Grid item xs={6}>
                   <Button
-                    onClick={clearApiKey}
+                    onClick={() => clearApiKey()}
                     variant="outlined"
                     color="error"
                     fullWidth
@@ -831,6 +1101,51 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
 
           {renderPasswordErrorMessage()}
         </Paper>
+      )}
+
+      {/* Provider key status summary */}
+      {Object.keys(PROVIDER_INFO).length > 1 && (
+        <Box sx={{ mt: 3 }}>
+          <Typography variant="subtitle2" sx={{ mb: 1 }}>
+            API Key Status
+          </Typography>
+          <Grid container spacing={1}>
+            {Object.entries(PROVIDER_INFO).map(([provider, info]) => (
+              <Grid item xs={6} sm={4} key={provider}>
+                <Paper
+                  variant="outlined"
+                  sx={{
+                    p: 1,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    borderLeft: "4px solid",
+                    borderColor: state.isAuthenticated[provider as ApiProvider]
+                      ? "success.main"
+                      : "warning.main",
+                  }}
+                >
+                  <Typography variant="body2">{info.name}</Typography>
+                  {state.isAuthenticated[provider as ApiProvider] ? (
+                    <Chip
+                      label="Active"
+                      color="success"
+                      size="small"
+                      variant="outlined"
+                    />
+                  ) : (
+                    <Chip
+                      label="Inactive"
+                      color="warning"
+                      size="small"
+                      variant="outlined"
+                    />
+                  )}
+                </Paper>
+              </Grid>
+            ))}
+          </Grid>
+        </Box>
       )}
     </Box>
   );
