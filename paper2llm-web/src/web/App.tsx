@@ -2,6 +2,8 @@
 // Manages file uploading, API key handling, PDF processing, and markdown preview with responsive layout.
 
 import React, { useState, useCallback } from "react";
+// @ts-ignore
+import packageInfo from "../../package.json";
 import {
   AppBar,
   Toolbar,
@@ -46,7 +48,7 @@ const App: React.FC = () => {
     setApiKey(key);
     setIsApiKeyValid(key.length > 0);
   };
-  
+
   // Handle model selection changes
   const handleModelChange = (event: SelectChangeEvent) => {
     setVisionModel(event.target.value);
@@ -169,7 +171,9 @@ const App: React.FC = () => {
                     <Grid container spacing={2} alignItems="center">
                       <Grid item xs={12} sm={6}>
                         <FormControl fullWidth size="small">
-                          <InputLabel id="vision-model-label">Vision Model</InputLabel>
+                          <InputLabel id="vision-model-label">
+                            Vision Model
+                          </InputLabel>
                           <Select
                             labelId="vision-model-label"
                             id="vision-model-select"
@@ -177,8 +181,12 @@ const App: React.FC = () => {
                             label="Vision Model"
                             onChange={handleModelChange}
                           >
-                            <MenuItem value="pixtral-12b-2409">Pixtral (pixtral-12b-2409)</MenuItem>
-                            <MenuItem value="pixtral-large-latest">Pixtral Large (pixtral-large-latest)</MenuItem>
+                            <MenuItem value="pixtral-12b-2409">
+                              Pixtral (pixtral-12b-2409)
+                            </MenuItem>
+                            <MenuItem value="pixtral-large-latest">
+                              Pixtral Large (pixtral-large-latest)
+                            </MenuItem>
                           </Select>
                         </FormControl>
                       </Grid>
@@ -284,7 +292,7 @@ const App: React.FC = () => {
         }}
       >
         <Typography variant="body2" sx={{ mb: 1 }}>
-          © 2025 paper2llm - MIT License - Developed by{" "}
+          © 2025 paper2llm v{packageInfo.version} - Developed by{" "}
           <a
             href="https://lacerbi.github.io/"
             target="_blank"

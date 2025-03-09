@@ -1,5 +1,5 @@
 {
-  "name": "paper2llm-web",
+  "name": "paper2llm",
   "version": "0.1.0",
   "private": true,
   "dependencies": {
