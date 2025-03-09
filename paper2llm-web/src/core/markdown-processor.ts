@@ -179,18 +179,34 @@ export class MarkdownProcessor {
         }
 
         if (description) {
-          // Post-process the description: trim whitespace and normalize newlines
-          const processedDescription = description.trim().replace(/\n+/g, ' ');
+          // Post-process the description: only trim leading and trailing whitespace
+          // but preserve internal newlines for formatting
+          const trimmedDescription = description.trim();
+          
+          // Format the description as a proper markdown blockquote
+          // Split by newlines, prefix each line with "> ", and add the header to the first line
+          const lines = trimmedDescription.split('\n');
+          const formattedLines = lines.map((line, index) => {
+            if (index === 0) {
+              // Add the header to the first line
+              return `> **Image description.** ${line}`;
+            } else {
+              return `> ${line}`;
+            }
+          });
+          
+          // Join the lines back together with newlines
+          const formattedDescription = formattedLines.join('\n');
 
           // Format the replacement based on options
           let replacement = "";
 
           if (options.keepOriginalImages) {
             // Keep the original image reference and add the description
-            replacement = `${match.full}\n\n> **Image Description:** ${processedDescription}\n`;
+            replacement = `${match.full}\n\n${formattedDescription}\n`;
           } else {
             // Replace the image with just the description
-            replacement = `> **Image Description:** ${processedDescription}\n`;
+            replacement = `${formattedDescription}\n`;
           }
 
           if (options.debugMode) {
