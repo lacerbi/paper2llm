@@ -1,11 +1,16 @@
 // AI Summary: Defines core interfaces and types for secure API key storage system.
 // Includes provider types, storage options, and encrypted data interfaces.
 
-import { ApiProvider, ApiKeyStorageType, ApiKeyExpiration, ApiKeyStorageOptions } from "../../../types/interfaces";
+import {
+  ApiProvider,
+  ApiKeyStorageType,
+  ApiKeyExpiration,
+  ApiKeyStorageOptions,
+} from "../../../types/interfaces";
 
 /**
  * Provider-specific API key interface
- * 
+ *
  * This interface defines the contract for provider-specific implementations
  * that handle validation, storage patterns, and other provider-specific logic.
  * Each API provider (Mistral, OpenAI, etc.) will have its own implementation.
@@ -15,50 +20,50 @@ export interface ApiKeyProvider {
    * Gets the provider identifier
    */
   getProviderId(): ApiProvider;
-  
+
   /**
    * Validates if an API key has the correct format for this provider
-   * 
+   *
    * @param apiKey The API key to validate
    * @returns true if the API key has a valid format, false otherwise
    */
   validateApiKey(apiKey: string): boolean;
-  
+
   /**
    * Gets the storage key for this provider
-   * 
+   *
    * @param basePattern The base pattern to use
    * @returns The storage key for this provider
    */
   getStorageKey(basePattern: string): string;
-  
+
   /**
    * Gets the protected key for this provider
-   * 
+   *
    * @param basePattern The base pattern to use
    * @returns The protected key for this provider
    */
   getProtectedKey(basePattern: string): string;
-  
+
   /**
    * Gets the storage type key for this provider
-   * 
+   *
    * @param basePattern The base pattern to use
    * @returns The storage type key for this provider
    */
   getStorageTypeKey(basePattern: string): string;
-  
+
   /**
    * Gets the expiration key for this provider
-   * 
+   *
    * @param basePattern The base pattern to use
    * @returns The expiration key for this provider
    */
   getExpirationKey(basePattern: string): string;
-  
+
   /**
    * Gets the expiration time key for this provider
-   * 
+   *
    * @param basePattern The base pattern to use
    * @returns The expiration time key for this provider
    */
@@ -67,14 +72,14 @@ export interface ApiKeyProvider {
 
 /**
  * Storage format for encrypted API keys
- * 
+ *
  * This interface defines the structure used to store encrypted API keys securely.
  * It includes:
  * - The encrypted API key itself (XOR encrypted and Base64 encoded)
  * - Validation data to verify correct password during decryption
  * - Version information for handling migrations
  * - Provider information to support multiple API services
- * 
+ *
  * This structure is serialized to JSON and Base64 encoded before storage.
  */
 export interface EncryptedKeyData {
@@ -86,7 +91,7 @@ export interface EncryptedKeyData {
 
 /**
  * Structure for validation info stored within encrypted data
- * 
+ *
  * Contains the validation components used to verify that decryption
  * was performed with the correct password:
  * - salt: A random value used to prevent rainbow table attacks
@@ -99,11 +104,11 @@ export interface ValidationInfo {
 
 /**
  * Base storage key patterns
- * 
+ *
  * Defines the base storage key patterns used for different operations.
  * These patterns act as templates that are combined with provider information
  * to generate the final storage keys.
- * 
+ *
  * Provider-specific implementations will use these patterns to generate
  * their unique storage keys, ensuring consistent naming across providers.
  */
@@ -117,7 +122,7 @@ export interface StorageKeyPatterns {
 
 /**
  * Legacy storage keys (for backward compatibility)
- * 
+ *
  * Defines the storage keys used in previous versions of the application.
  * These keys are used for migrating data from older versions to the
  * current format, ensuring a smooth upgrade experience.
@@ -131,41 +136,33 @@ export interface LegacyStorageKeys {
 }
 
 /**
- * Provider Registry Interface
- * 
- * Defines the contract for a registry that manages provider implementations.
- * The registry acts as a central point for accessing provider-specific functionality,
- * allowing the main storage class to delegate operations to the appropriate provider.
+ * Factory for creating StorageKeyPatterns
+ *
+ * Provides consistent storage key patterns for the application.
  */
-export interface ProviderRegistry {
-  /**
-   * Registers a provider implementation
-   * 
-   * @param provider The provider implementation to register
-   */
-  registerProvider(provider: ApiKeyProvider): void;
-  
-  /**
-   * Gets a provider implementation by its identifier
-   * 
-   * @param providerId The provider identifier
-   * @returns The provider implementation or null if not found
-   */
-  getProvider(providerId: ApiProvider): ApiKeyProvider | null;
-  
-  /**
-   * Gets all registered providers
-   * 
-   * @returns Array of provider implementations
-   */
-  getAllProviders(): ApiKeyProvider[];
-  
-  /**
-   * Gets the default provider
-   * 
-   * @returns The default provider implementation
-   */
-  getDefaultProvider(): ApiKeyProvider;
+export function createDefaultStorageKeyPatterns(): StorageKeyPatterns {
+  return {
+    storageKeyPattern: "paper2llm_api_key_{provider}",
+    protectedKeyPattern: "paper2llm_api_key_{provider}_protected",
+    storageTypeKeyPattern: "paper2llm_storage_type_{provider}",
+    expirationKeyPattern: "paper2llm_api_key_{provider}_expiration",
+    expirationTimeKeyPattern: "paper2llm_api_key_{provider}_expiration_time",
+  };
+}
+
+/**
+ * Factory for creating LegacyStorageKeys
+ *
+ * Provides consistent legacy key names for backward compatibility.
+ */
+export function createDefaultLegacyKeys(): LegacyStorageKeys {
+  return {
+    legacyStorageKey: "paper2llm_api_key",
+    legacyProtectedKey: "paper2llm_api_key_protected",
+    legacyStorageTypeKey: "paper2llm_storage_type",
+    legacyExpirationKey: "paper2llm_api_key_expiration",
+    legacyExpirationTimeKey: "paper2llm_api_key_expiration_time",
+  };
 }
 
 /**
@@ -180,3 +177,222 @@ export interface ProviderRegistry {
  * - 0 for "session" means the key expires when the browser session ends
  */
 export type ExpirationDurations = Record<ApiKeyExpiration, number>;
+
+/**
+ * Interface for expiration service
+ * 
+ * Defines methods for managing API key expiration
+ */
+export interface ExpirationService {
+  /**
+   * Gets the expiration setting for the stored API key
+   * 
+   * @param provider Provider to check
+   * @param defaultProviderId Default provider ID for legacy support
+   * @returns The expiration setting or null if no key is stored
+   */
+  getExpiration(
+    provider: ApiProvider,
+    defaultProviderId: ApiProvider
+  ): ApiKeyExpiration | null;
+  
+  /**
+   * Checks if the stored API key has expired
+   * 
+   * @param provider Provider to check
+   * @param storageType Storage type being used
+   * @param defaultProviderId Default provider ID for legacy support
+   * @returns true if the API key has expired, false otherwise
+   */
+  hasExpired(
+    provider: ApiProvider, 
+    storageType: string | null,
+    defaultProviderId: ApiProvider
+  ): boolean;
+  
+  /**
+   * Calculate an expiration timestamp based on the expiration type
+   * 
+   * @param expiration The expiration type to calculate
+   * @returns A timestamp in milliseconds or null for never/session
+   */
+  calculateExpirationTime(expiration: ApiKeyExpiration): number | null;
+}
+
+/**
+ * Legacy Migration Service Interface
+ * 
+ * Defines methods for handling migration of legacy storage formats
+ */
+export interface LegacyMigrationService {
+  /**
+   * Checks if legacy keys exist and migrates them to the new format
+   * 
+   * @returns true if migration was performed, false otherwise
+   */
+  checkAndMigrateLegacyKeys(): boolean;
+  
+  /**
+   * Clears all legacy storage keys from both localStorage and sessionStorage
+   */
+  clearLegacyKeys(): void;
+}
+
+/**
+ * Interface for storage operations service
+ * 
+ * Defines methods for storage management and key pattern handling
+ * used by the API key storage system.
+ */
+export interface StorageOperations {
+  /**
+   * Gets the appropriate storage based on the storage type
+   * 
+   * @param storageType The storage type to use (local or session)
+   * @returns The corresponding Storage object
+   */
+  getStorage(storageType?: ApiKeyStorageType): Storage;
+
+  /**
+   * Gets a value from storage for a specific provider
+   * 
+   * @param key The base key pattern to use
+   * @param provider The provider to get the value for
+   * @param storageType The storage type to use
+   * @returns The stored value or null if not found
+   */
+  getValue(
+    key: keyof StorageKeyPatterns,
+    provider: ApiProvider,
+    storageType?: ApiKeyStorageType | null
+  ): string | null;
+
+  /**
+   * Sets a value in storage for a specific provider
+   * 
+   * @param key The base key pattern to use
+   * @param value The value to store
+   * @param provider The provider to set the value for
+   * @param storageType The storage type to use
+   */
+  setValue(
+    key: keyof StorageKeyPatterns,
+    value: string,
+    provider: ApiProvider,
+    storageType?: ApiKeyStorageType
+  ): void;
+
+  /**
+   * Removes a value from storage for a specific provider
+   * 
+   * @param key The base key pattern to use
+   * @param provider The provider to remove the value for
+   * @param fromLocal Whether to remove from localStorage
+   * @param fromSession Whether to remove from sessionStorage
+   */
+  removeValue(
+    key: keyof StorageKeyPatterns,
+    provider: ApiProvider,
+    fromLocal?: boolean,
+    fromSession?: boolean
+  ): void;
+
+  /**
+   * Gets a value from legacy storage
+   * 
+   * @param key The legacy key to use
+   * @param storageType The storage type to check, or null to check both
+   * @returns The stored value or null if not found
+   */
+  getLegacyValue(
+    key: keyof LegacyStorageKeys,
+    storageType?: ApiKeyStorageType | null
+  ): string | null;
+
+  /**
+   * Checks if a value exists in storage for a specific provider
+   * 
+   * @param key The base key pattern to use
+   * @param provider The provider to check
+   * @param checkLocal Whether to check localStorage
+   * @param checkSession Whether to check sessionStorage
+   * @returns true if value exists, false otherwise
+   */
+  hasValue(
+    key: keyof StorageKeyPatterns,
+    provider: ApiProvider,
+    checkLocal?: boolean,
+    checkSession?: boolean
+  ): boolean;
+
+  /**
+   * Checks if a legacy value exists in storage
+   * 
+   * @param key The legacy key to check
+   * @param checkLocal Whether to check localStorage
+   * @param checkSession Whether to check sessionStorage
+   * @returns true if value exists, false otherwise
+   */
+  hasLegacyValue(
+    key: keyof LegacyStorageKeys,
+    checkLocal?: boolean,
+    checkSession?: boolean
+  ): boolean;
+  
+  /**
+   * Removes all legacy values from storage
+   * 
+   * @param fromLocal Whether to remove from localStorage (default: true)
+   * @param fromSession Whether to remove from sessionStorage (default: true)
+   */
+  removeLegacyValues(
+    fromLocal?: boolean,
+    fromSession?: boolean
+  ): void;
+  
+  /**
+   * Gets the storage type for a provider
+   * 
+   * @param provider Provider to check
+   * @returns Storage type or null if not found
+   */
+  getStorageTypeForProvider(provider: ApiProvider): string | null;
+}
+
+/**
+ * Provider Registry Interface
+ *
+ * Defines the contract for a registry that manages provider implementations.
+ * The registry acts as a central point for accessing provider-specific functionality,
+ * allowing the main storage class to delegate operations to the appropriate provider.
+ */
+export interface ProviderRegistry {
+  /**
+   * Registers a provider implementation
+   *
+   * @param provider The provider implementation to register
+   */
+  registerProvider(provider: ApiKeyProvider): void;
+
+  /**
+   * Gets a provider implementation by its identifier
+   *
+   * @param providerId The provider identifier
+   * @returns The provider implementation or null if not found
+   */
+  getProvider(providerId: ApiProvider): ApiKeyProvider | null;
+
+  /**
+   * Gets all registered providers
+   *
+   * @returns Array of provider implementations
+   */
+  getAllProviders(): ApiKeyProvider[];
+
+  /**
+   * Gets the default provider
+   *
+   * @returns The default provider implementation
+   */
+  getDefaultProvider(): ApiKeyProvider;
+}
