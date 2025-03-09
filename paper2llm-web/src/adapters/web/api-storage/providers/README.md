@@ -13,12 +13,47 @@ The provider system is built around these key components:
 
 This architecture makes it easy to add support for new API providers without modifying the core storage logic.
 
+### Component Hierarchy
+
+```
+┌─────────────────────┐
+│   ApiKeyProvider    │ (Interface)
+└─────────────────────┘
+           ▲
+           │ implements
+           │
+┌─────────────────────┐
+│    BaseProvider     │ (Abstract class)
+└─────────────────────┘
+           ▲
+           │ extends
+           │
+┌─────────────────────┐
+│ Provider Implementations │
+│  - MistralProvider   │
+│  - OpenAIProvider    │
+└─────────────────────┘
+```
+
 ## Available Providers
 
 Currently, the following providers are implemented:
 
-- **MistralProvider**: Supports Mistral AI API keys
-- **OpenAIProvider**: Supports OpenAI API keys
+### MistralProvider
+
+- **Provider ID**: `"mistral"`
+- **Validation Pattern**: `/^[A-Za-z0-9-_]{32,64}$/`
+- **Key Characteristics**: 
+  - 32-64 characters long
+  - Contains only alphanumeric characters, hyphens, and underscores
+
+### OpenAIProvider
+
+- **Provider ID**: `"openai"`
+- **Validation Pattern**: `/^sk-[A-Za-z0-9]{32,64}$/`
+- **Key Characteristics**:
+  - Starts with the prefix 'sk-'
+  - Followed by 32-64 alphanumeric characters
 
 ## Adding a New Provider
 
@@ -35,7 +70,7 @@ To add support for a new API provider:
 import { BaseProvider } from "./base-provider";
 import { ApiProvider } from "../../../../types/interfaces";
 
-// Update interfaces.ts to add the new provider type
+// First update interfaces.ts to add the new provider type
 // export type ApiProvider = 'mistral' | 'openai' | 'exampleapi';
 
 export class ExampleAPIProvider extends BaseProvider {
@@ -65,12 +100,76 @@ export function createDefaultProviders() {
 
 ## Provider Registration
 
-Providers are automatically registered with the `ProviderRegistry` when the `WebApiKeyStorage` class is initialized. You can also manually register providers using the `registerProvider` method on the registry.
+Providers are automatically registered with the `ProviderRegistry` when the `WebApiKeyStorage` class is initialized. You can also manually register providers using the `registerProvider` method on the registry:
+
+```typescript
+const providerRegistry = new WebProviderRegistry();
+const customProvider = new CustomProvider();
+providerRegistry.registerProvider(customProvider);
+```
+
+The provider registry serves as the central coordination point for all provider-specific operations, allowing the main storage class to delegate operations to the appropriate provider.
+
+## Key Pattern Generation
+
+The provider system uses a pattern-based approach to generate storage keys:
+
+```typescript
+// Base patterns with placeholders
+const patterns = {
+  storageKeyPattern: "paper2llm_api_key_{provider}",
+  protectedKeyPattern: "paper2llm_api_key_{provider}_protected",
+  // Additional patterns...
+};
+
+// In BaseProvider implementation:
+getStorageKey(basePattern: string): string {
+  return this.replaceProviderPlaceholder(basePattern);
+}
+
+private replaceProviderPlaceholder(pattern: string): string {
+  return pattern.replace("{provider}", this.providerId);
+}
+```
+
+This approach ensures that:
+- Keys for different providers are stored separately
+- Each provider follows the same naming conventions
+- Adding new providers doesn't require changing the key generation logic
 
 ## Validation Patterns
 
-Each provider defines its own validation pattern for API keys. These patterns ensure that keys have the correct format before they are stored. The validation patterns are based on the documented formats for each provider's API keys.
+Each provider defines its own validation pattern for API keys. These patterns ensure that keys have the correct format before they are stored.
 
-## Storage Keys
+The validation patterns are implemented as regular expressions in each provider class:
 
-The provider system generates storage keys based on the provider ID and base patterns. This ensures that keys for different providers are stored separately, even if they have the same name.
+```typescript
+// Example from MistralProvider
+private readonly validationPattern = /^[A-Za-z0-9-_]{32,64}$/;
+
+// Example from OpenAIProvider
+private readonly validationPattern = /^sk-[A-Za-z0-9]{32,64}$/;
+```
+
+Validation occurs in two key places:
+1. When storing a new API key (to prevent storing invalid keys)
+2. During decryption (to verify the key was decrypted correctly)
+
+## Provider Usage
+
+The provider system is used by the `WebApiKeyStorage` class to handle provider-specific operations:
+
+```typescript
+// Getting a provider implementation
+const providerImpl = this.providerRegistry.getProvider(providerId);
+
+// Validating an API key
+if (!providerImpl.validateApiKey(apiKey)) {
+  throw new ApiKeyStorageError("Invalid API key format");
+}
+
+// Getting provider-specific storage keys
+const storageKey = providerImpl.getStorageKey(this.keyPatterns.storageKeyPattern);
+```
+
+This delegation pattern allows the main storage class to remain clean and focused on its core responsibilities, while provider-specific logic is encapsulated in the appropriate provider implementation.

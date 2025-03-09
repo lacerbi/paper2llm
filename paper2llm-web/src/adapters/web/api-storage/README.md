@@ -18,10 +18,39 @@ This module provides secure API key storage for web applications, with a focus o
 The module follows a modular architecture with separate components for different concerns:
 
 - **WebApiKeyStorage**: Main class implementing the `ApiKeyStorage` interface
+- **ProviderRegistry**: Central registry for provider implementations
+- **Provider Implementations**: Provider-specific classes for key validation and storage
+- **StorageOperations**: Handles localStorage/sessionStorage operations
+- **ExpirationService**: Manages key expiration policies
 - **Encryption Utilities**: Handles secure encryption/decryption of API keys
 - **Password Validation**: Enforces secure password requirements
 - **Error Handling**: Provides specific error types and messages
-- **Interfaces**: Defines the API and data structures
+
+### Component Relationships
+
+```
+┌─────────────────────┐
+│  WebApiKeyStorage   │
+└─────────────────────┘
+           │
+           │ uses
+           ▼
+┌─────────────────────┐     ┌─────────────────────┐
+│   ProviderRegistry   │◄────│Provider Implementations│
+└─────────────────────┘     └─────────────────────┘
+           │
+           │ uses
+           ▼
+┌─────────────────────┐     ┌─────────────────────┐
+│  StorageOperations  │     │  ExpirationService  │
+└─────────────────────┘     └─────────────────────┘
+           │                          │
+           │ uses                     │ uses
+           ▼                          ▼
+┌─────────────────────┐     ┌─────────────────────┐
+│  encryption-utils   │     │  password-utils     │
+└─────────────────────┘     └─────────────────────┘
+```
 
 ### Security Model
 
@@ -30,6 +59,7 @@ The module follows a modular architecture with separate components for different
 3. **XOR Encryption**: Implements basic but effective XOR encryption with password expansion
 4. **Validation Hashing**: Includes validation data to verify correct password during decryption
 5. **Automatic Expiration**: Supports key expiration to limit the validity period
+6. **Provider-specific Validation**: Ensures keys match the expected format for each provider
 
 ## Usage Examples
 
@@ -126,6 +156,15 @@ interface ApiKeyStorageOptions {
 }
 ```
 
+### Providers
+
+The module includes a provider registry system that manages different API providers:
+
+- **MistralProvider**: Handles Mistral AI API keys
+- **OpenAIProvider**: Handles OpenAI API keys
+
+See the [providers README](./providers/README.md) for more details on the provider system.
+
 ## Error Handling
 
 The module uses the `ApiKeyStorageError` class for all errors, providing clear and user-friendly error messages.
@@ -138,3 +177,18 @@ Common error scenarios:
 - Invalid API key format
 - Corrupted storage data
 - Expired API keys
+
+## Key Storage Format
+
+API keys are stored in the following format:
+
+```typescript
+interface EncryptedKeyData {
+  encryptedKey: string; // Base64 encoded XOR-encrypted API key
+  validation: string; // Base64 encoded HMAC for validation
+  version: number; // Storage format version for migrations
+  provider?: ApiProvider; // Provider identifier (added in version 3)
+}
+```
+
+This data structure is serialized to JSON and Base64 encoded before being stored in either localStorage or sessionStorage.

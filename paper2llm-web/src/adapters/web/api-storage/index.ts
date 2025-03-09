@@ -26,7 +26,6 @@ export * from './providers';
 // Storage and expiration services
 export { WebStorageOperations } from './storage-operations';
 export { WebExpirationService } from './expiration-service';
-export { WebLegacyMigrationService } from './legacy-migration';
 
 // Interfaces and utility types
 export * from './interfaces';

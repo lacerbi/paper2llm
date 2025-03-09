@@ -6,10 +6,7 @@ import {
   ApiKeyStorageType, 
   ApiProvider 
 } from "../../../types/interfaces";
-import { 
-  StorageKeyPatterns,
-  LegacyStorageKeys 
-} from "./interfaces";
+import { StorageKeyPatterns } from "./interfaces";
 import { ApiKeyProvider } from "./interfaces";
 
 /**
@@ -72,18 +69,6 @@ export interface StorageOperations {
   ): void;
 
   /**
-   * Gets a value from legacy storage
-   * 
-   * @param key The legacy key to use
-   * @param storageType The storage type to check, or null to check both
-   * @returns The stored value or null if not found
-   */
-  getLegacyValue(
-    key: keyof LegacyStorageKeys,
-    storageType?: ApiKeyStorageType | null
-  ): string | null;
-
-  /**
    * Checks if a value exists in storage for a specific provider
    * 
    * @param key The base key pattern to use
@@ -98,31 +83,6 @@ export interface StorageOperations {
     checkLocal?: boolean,
     checkSession?: boolean
   ): boolean;
-
-  /**
-   * Checks if a legacy value exists in storage
-   * 
-   * @param key The legacy key to check
-   * @param checkLocal Whether to check localStorage
-   * @param checkSession Whether to check sessionStorage
-   * @returns true if value exists, false otherwise
-   */
-  hasLegacyValue(
-    key: keyof LegacyStorageKeys,
-    checkLocal?: boolean,
-    checkSession?: boolean
-  ): boolean;
-  
-  /**
-   * Removes all legacy values from storage
-   * 
-   * @param fromLocal Whether to remove from localStorage (default: true)
-   * @param fromSession Whether to remove from sessionStorage (default: true)
-   */
-  removeLegacyValues(
-    fromLocal?: boolean,
-    fromSession?: boolean
-  ): void;
   
   /**
    * Gets the storage type for a provider
@@ -141,27 +101,20 @@ export interface StorageOperations {
  * - Storage key pattern management
  * - Provider-specific key generation
  * - Reading, writing, and removing values
- * - Legacy storage support
  * 
  * It separates the storage mechanics from the business logic
  * of API key management.
  */
 export class WebStorageOperations implements StorageOperations {
   private readonly keyPatterns: StorageKeyPatterns;
-  private readonly legacyKeys: LegacyStorageKeys;
 
   /**
    * Creates a new WebStorageOperations
    * 
    * @param keyPatterns Storage key patterns with {provider} placeholder
-   * @param legacyKeys Legacy storage keys for backward compatibility
    */
-  constructor(
-    keyPatterns: StorageKeyPatterns,
-    legacyKeys: LegacyStorageKeys
-  ) {
+  constructor(keyPatterns: StorageKeyPatterns) {
     this.keyPatterns = keyPatterns;
-    this.legacyKeys = legacyKeys;
   }
 
   /**
@@ -255,32 +208,6 @@ export class WebStorageOperations implements StorageOperations {
   }
 
   /**
-   * Gets a value from legacy storage
-   * 
-   * @param key The legacy key to use
-   * @param storageType The storage type to check, or null to check both
-   * @returns The stored value or null if not found
-   */
-  getLegacyValue(
-    key: keyof LegacyStorageKeys,
-    storageType?: ApiKeyStorageType | null
-  ): string | null {
-    const legacyKey = this.legacyKeys[key];
-
-    if (storageType === "local") {
-      return localStorage.getItem(legacyKey);
-    } else if (storageType === "session") {
-      return sessionStorage.getItem(legacyKey);
-    } else {
-      // Check both storages if no specific type is provided
-      return (
-        localStorage.getItem(legacyKey) ||
-        sessionStorage.getItem(legacyKey)
-      );
-    }
-  }
-
-  /**
    * Checks if a value exists in storage for a specific provider
    * 
    * @param key The base key pattern to use
@@ -306,58 +233,6 @@ export class WebStorageOperations implements StorageOperations {
       return true;
     }
     return false;
-  }
-
-  /**
-   * Checks if a legacy value exists in storage
-   * 
-   * @param key The legacy key to check
-   * @param checkLocal Whether to check localStorage (default: true)
-   * @param checkSession Whether to check sessionStorage (default: true)
-   * @returns true if value exists, false otherwise
-   */
-  hasLegacyValue(
-    key: keyof LegacyStorageKeys,
-    checkLocal: boolean = true,
-    checkSession: boolean = true
-  ): boolean {
-    const legacyKey = this.legacyKeys[key];
-
-    // Check appropriate storage(s)
-    if (checkLocal && localStorage.getItem(legacyKey) !== null) {
-      return true;
-    }
-    if (checkSession && sessionStorage.getItem(legacyKey) !== null) {
-      return true;
-    }
-    return false;
-  }
-  
-  /**
-   * Removes all legacy values from storage
-   * 
-   * @param fromLocal Whether to remove from localStorage (default: true)
-   * @param fromSession Whether to remove from sessionStorage (default: true)
-   */
-  removeLegacyValues(
-    fromLocal: boolean = true,
-    fromSession: boolean = true
-  ): void {
-    // Get all legacy key names
-    const legacyKeyNames = Object.keys(this.legacyKeys) as Array<keyof LegacyStorageKeys>;
-    
-    // Remove each legacy key from selected storage types
-    for (const keyName of legacyKeyNames) {
-      const key = this.legacyKeys[keyName];
-      
-      if (fromLocal) {
-        localStorage.removeItem(key);
-      }
-      
-      if (fromSession) {
-        sessionStorage.removeItem(key);
-      }
-    }
   }
   
   /**

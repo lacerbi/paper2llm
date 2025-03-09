@@ -121,21 +121,6 @@ export interface StorageKeyPatterns {
 }
 
 /**
- * Legacy storage keys (for backward compatibility)
- *
- * Defines the storage keys used in previous versions of the application.
- * These keys are used for migrating data from older versions to the
- * current format, ensuring a smooth upgrade experience.
- */
-export interface LegacyStorageKeys {
-  legacyStorageKey: string;
-  legacyProtectedKey: string;
-  legacyStorageTypeKey: string;
-  legacyExpirationKey: string;
-  legacyExpirationTimeKey: string;
-}
-
-/**
  * Factory for creating StorageKeyPatterns
  *
  * Provides consistent storage key patterns for the application.
@@ -147,21 +132,6 @@ export function createDefaultStorageKeyPatterns(): StorageKeyPatterns {
     storageTypeKeyPattern: "paper2llm_storage_type_{provider}",
     expirationKeyPattern: "paper2llm_api_key_{provider}_expiration",
     expirationTimeKeyPattern: "paper2llm_api_key_{provider}_expiration_time",
-  };
-}
-
-/**
- * Factory for creating LegacyStorageKeys
- *
- * Provides consistent legacy key names for backward compatibility.
- */
-export function createDefaultLegacyKeys(): LegacyStorageKeys {
-  return {
-    legacyStorageKey: "paper2llm_api_key",
-    legacyProtectedKey: "paper2llm_api_key_protected",
-    legacyStorageTypeKey: "paper2llm_storage_type",
-    legacyExpirationKey: "paper2llm_api_key_expiration",
-    legacyExpirationTimeKey: "paper2llm_api_key_expiration_time",
   };
 }
 
@@ -188,7 +158,7 @@ export interface ExpirationService {
    * Gets the expiration setting for the stored API key
    * 
    * @param provider Provider to check
-   * @param defaultProviderId Default provider ID for legacy support
+   * @param defaultProviderId Default provider ID
    * @returns The expiration setting or null if no key is stored
    */
   getExpiration(
@@ -201,7 +171,7 @@ export interface ExpirationService {
    * 
    * @param provider Provider to check
    * @param storageType Storage type being used
-   * @param defaultProviderId Default provider ID for legacy support
+   * @param defaultProviderId Default provider ID
    * @returns true if the API key has expired, false otherwise
    */
   hasExpired(
@@ -217,25 +187,6 @@ export interface ExpirationService {
    * @returns A timestamp in milliseconds or null for never/session
    */
   calculateExpirationTime(expiration: ApiKeyExpiration): number | null;
-}
-
-/**
- * Legacy Migration Service Interface
- * 
- * Defines methods for handling migration of legacy storage formats
- */
-export interface LegacyMigrationService {
-  /**
-   * Checks if legacy keys exist and migrates them to the new format
-   * 
-   * @returns true if migration was performed, false otherwise
-   */
-  checkAndMigrateLegacyKeys(): boolean;
-  
-  /**
-   * Clears all legacy storage keys from both localStorage and sessionStorage
-   */
-  clearLegacyKeys(): void;
 }
 
 /**
@@ -298,18 +249,6 @@ export interface StorageOperations {
   ): void;
 
   /**
-   * Gets a value from legacy storage
-   * 
-   * @param key The legacy key to use
-   * @param storageType The storage type to check, or null to check both
-   * @returns The stored value or null if not found
-   */
-  getLegacyValue(
-    key: keyof LegacyStorageKeys,
-    storageType?: ApiKeyStorageType | null
-  ): string | null;
-
-  /**
    * Checks if a value exists in storage for a specific provider
    * 
    * @param key The base key pattern to use
@@ -324,31 +263,6 @@ export interface StorageOperations {
     checkLocal?: boolean,
     checkSession?: boolean
   ): boolean;
-
-  /**
-   * Checks if a legacy value exists in storage
-   * 
-   * @param key The legacy key to check
-   * @param checkLocal Whether to check localStorage
-   * @param checkSession Whether to check sessionStorage
-   * @returns true if value exists, false otherwise
-   */
-  hasLegacyValue(
-    key: keyof LegacyStorageKeys,
-    checkLocal?: boolean,
-    checkSession?: boolean
-  ): boolean;
-  
-  /**
-   * Removes all legacy values from storage
-   * 
-   * @param fromLocal Whether to remove from localStorage (default: true)
-   * @param fromSession Whether to remove from sessionStorage (default: true)
-   */
-  removeLegacyValues(
-    fromLocal?: boolean,
-    fromSession?: boolean
-  ): void;
   
   /**
    * Gets the storage type for a provider
@@ -395,4 +309,11 @@ export interface ProviderRegistry {
    * @returns The default provider implementation
    */
   getDefaultProvider(): ApiKeyProvider;
+  
+  /**
+   * Gets the default provider ID
+   *
+   * @returns The default provider ID
+   */
+  getDefaultProviderId(): ApiProvider;
 }

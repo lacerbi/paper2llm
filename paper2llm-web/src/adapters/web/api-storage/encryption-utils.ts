@@ -154,10 +154,9 @@ export const encryptionUtils = {
    *
    * The decryption process:
    * 1. Parses the encrypted data structure
-   * 2. Handles version migration if needed
-   * 3. Performs XOR decryption using the provided password
-   * 4. Validates the decryption using stored validation data
-   * 5. Verifies the decrypted key has valid format for the provider
+   * 2. Performs XOR decryption using the provided password
+   * 3. Validates the decryption using stored validation data
+   * 4. Verifies the decrypted key has valid format for the provider
    *
    * @param encryptedData The encrypted API key data (Base64 encoded JSON string)
    * @param password The password to use for decryption
@@ -175,17 +174,6 @@ export const encryptionUtils = {
     try {
       // Parse the encrypted data
       const parsedData: EncryptedKeyData = JSON.parse(atob(encryptedData));
-
-      // Handle legacy format migration (version 1 or undefined)
-      if (!parsedData.version || parsedData.version < 2) {
-        return this.decryptLegacyApiKey(
-          parsedData.encryptedKey || encryptedData,
-          password,
-          validateApiKey,
-          defaultProvider
-        );
-      }
-
       const encryptedKey = parsedData.encryptedKey;
       const validationInfo = JSON.parse(atob(parsedData.validation)) as ValidationInfo;
 
@@ -253,70 +241,6 @@ export const encryptionUtils = {
       // Generic error
       throw new ApiKeyStorageError(
         "Failed to decrypt API key. Please check that your password is correct."
-      );
-    }
-  },
-
-  /**
-   * Legacy decryption method for backward compatibility
-   * Used for keys stored with version 1 of the storage format which had a simpler
-   * encryption scheme without validation data or provider information.
-   * 
-   * This method ensures older stored API keys can still be retrieved and migrated
-   * to the newer storage format automatically.
-   * 
-   * @param encryptedKey The encrypted API key (Base64 encoded)
-   * @param password The password to use for decryption
-   * @param validateApiKey Function to validate the decrypted API key format
-   * @param defaultProvider The default provider to use
-   * @returns The decrypted API key
-   * @throws ApiKeyStorageError if password is incorrect or data is corrupted
-   */
-  decryptLegacyApiKey(
-    encryptedKey: string, 
-    password: string,
-    validateApiKey: (key: string, provider: ApiProvider) => boolean,
-    defaultProvider: ApiProvider
-  ): string {
-    try {
-      const encrypted = atob(encryptedKey); // Base64 decode
-
-      // Use the same repeating key technique for decryption
-      const keyLength = encrypted.length;
-      let repeatedKey = "";
-
-      // Repeat the password to match the encrypted data length
-      while (repeatedKey.length < keyLength) {
-        repeatedKey += password;
-      }
-
-      // Trim to exact length needed
-      repeatedKey = repeatedKey.substring(0, keyLength);
-
-      // XOR decryption
-      const decrypted = Array.from(encrypted)
-        .map((char, i) => {
-          const keyChar = repeatedKey[i];
-          return String.fromCharCode(
-            char.charCodeAt(0) ^ keyChar.charCodeAt(0)
-          );
-        })
-        .join("");
-
-      // Verify decrypted value has valid API key format
-      if (!validateApiKey(decrypted, defaultProvider)) {
-        throw new ApiKeyStorageError(
-          "Incorrect password or corrupted storage. The decrypted value is not a valid API key."
-        );
-      }
-
-      return decrypted;
-    } catch (error) {
-      if (error instanceof ApiKeyStorageError) {
-        throw error;
-      }
-      throw new ApiKeyStorageError(
-        "Failed to decrypt legacy API key format. You may need to clear and re-enter your API key."
       );
     }
   },

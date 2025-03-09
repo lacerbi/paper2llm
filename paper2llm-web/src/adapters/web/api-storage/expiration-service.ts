@@ -32,7 +32,7 @@ export interface ExpirationService {
    * Gets the expiration setting for the stored API key
    * 
    * @param provider Provider to check
-   * @param storageType Optional storage type to check specifically
+   * @param defaultProviderId Default provider ID
    * @returns The expiration setting or null if no key is stored
    */
   getExpiration(
@@ -45,6 +45,7 @@ export interface ExpirationService {
    * 
    * @param provider Provider to check
    * @param storageType Storage type being used
+   * @param defaultProviderId Default provider ID
    * @returns true if the API key has expired, false otherwise
    */
   hasExpired(
@@ -100,7 +101,7 @@ export class WebExpirationService implements ExpirationService {
    * Gets the expiration setting for the stored API key
    * 
    * @param provider Provider to check
-   * @param defaultProviderId Default provider ID for legacy support
+   * @param defaultProviderId Default provider ID
    * @returns The expiration setting or null if no key is stored
    */
   getExpiration(
@@ -114,19 +115,11 @@ export class WebExpirationService implements ExpirationService {
     }
 
     // Try to get the expiration
-    let expiration = this.storageOperations.getValue(
+    const expiration = this.storageOperations.getValue(
       "expirationKeyPattern",
       provider,
       storageType
     ) as ApiKeyExpiration | null;
-
-    // If not found and provider is default, check legacy keys
-    if (!expiration && provider === defaultProviderId) {
-      expiration = this.storageOperations.getLegacyValue(
-        "legacyExpirationKey",
-        storageType
-      ) as ApiKeyExpiration | null;
-    }
 
     return expiration;
   }
@@ -140,7 +133,7 @@ export class WebExpirationService implements ExpirationService {
    *
    * @param provider Provider to check
    * @param storageType Storage type being used
-   * @param defaultProviderId Default provider ID for legacy support
+   * @param defaultProviderId Default provider ID
    * @returns true if the API key has expired, false otherwise
    */
   hasExpired(
@@ -158,19 +151,11 @@ export class WebExpirationService implements ExpirationService {
     }
 
     // Try to get the expiration time
-    let expirationTimeStr = this.storageOperations.getValue(
+    const expirationTimeStr = this.storageOperations.getValue(
       "expirationTimeKeyPattern",
       provider,
       storageType
     );
-
-    // If not found and provider is default, check legacy keys
-    if (!expirationTimeStr && provider === defaultProviderId) {
-      expirationTimeStr = this.storageOperations.getLegacyValue(
-        "legacyExpirationTimeKey",
-        storageType
-      );
-    }
 
     if (!expirationTimeStr) {
       // If no expiration time is set, the key doesn't expire
