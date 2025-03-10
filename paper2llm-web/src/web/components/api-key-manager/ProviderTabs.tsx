@@ -25,7 +25,13 @@ const ProviderTabs: React.FC<ProviderTabsProps> = ({
     <Tabs
       value={currentProvider}
       onChange={onProviderChange}
-      sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}
+      sx={{ 
+        minHeight: '48px', 
+        '& .MuiTab-root': { 
+          py: 1,
+          minHeight: '40px'
+        }
+      }}
     >
       {Object.entries(PROVIDER_INFO).map(([provider, info]) => (
         <Tab

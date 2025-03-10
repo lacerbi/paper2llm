@@ -14,10 +14,7 @@ import {
   SelectChangeEvent,
   CircularProgress,
 } from "@mui/material";
-import {
-  Key as KeyIcon,
-  Check as CheckIcon,
-} from "@mui/icons-material";
+import { Key as KeyIcon, Check as CheckIcon } from "@mui/icons-material";
 import { ApiProvider } from "../../adapters/web/api-storage";
 import { WebApiKeyStorage } from "../../adapters/web/api-storage";
 
@@ -25,10 +22,10 @@ import { WebApiKeyStorage } from "../../adapters/web/api-storage";
 import { ApiKeyManagerProps } from "./api-key-manager/types";
 import { PROVIDER_INFO } from "./api-key-manager/constants";
 import { canSubmitForm } from "./api-key-manager/utils";
-import { 
-  useApiKeyState, 
-  usePasswordState, 
-  useSecurityOptions 
+import {
+  useApiKeyState,
+  usePasswordState,
+  useSecurityOptions,
 } from "./api-key-manager/hooks";
 
 // Import UI components
@@ -81,7 +78,7 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
           currentProvider,
           passwordState.password
         );
-        
+
         if (success) {
           securityState.resetSecurityState();
         } else {
@@ -94,26 +91,27 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
         // User is trying to store a new key
         if (!passwordState.validatePasswordRequirements()) {
           apiKeyState.setError(
-            passwordState.passwordError || 
-            "Password does not meet the security requirements"
+            passwordState.passwordError ||
+              "Password does not meet the security requirements"
           );
           securityState.setIsProcessing(false);
           return;
         }
-        
+
         const success = await apiKeyState.storeApiKey(
           passwordState.password,
           securityState.expiration
         );
-        
+
         if (success) {
           securityState.resetSecurityState();
         }
       }
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "An error occurred";
+      const errorMessage =
+        error instanceof Error ? error.message : "An error occurred";
       apiKeyState.setError(errorMessage);
-      
+
       // Apply lock if it looks like a password error
       if (
         errorMessage.includes("password") ||
@@ -149,39 +147,67 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
 
   return (
     <Box sx={{ mb: 2 }}>
-      {/* Compact header with provider tabs and API status */}
+      {/* Compact header with title, provider tabs, and API status all in one row */}
       <Stack
         direction="row"
         alignItems="center"
         justifyContent="space-between"
-        sx={{ mb: 1 }}
+        sx={{
+          mb: 2,
+          borderBottom: 1,
+          borderColor: "divider",
+          flexWrap: { xs: "wrap", sm: "nowrap" },
+        }}
       >
-        <Box sx={{ display: "flex", alignItems: "center" }}>
+        {/* Title section with stronger vertical adjustment and increased spacing */}
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            mr: 4, // Increased horizontal spacing
+            minWidth: "fit-content",
+            mb: { xs: 1, sm: 0 },
+            height: "48px", // Match tab height
+            transform: "translateY(-6px)", // More significant upward adjustment
+          }}
+        >
           <KeyIcon sx={{ mr: 1, color: "primary.main" }} />
-          <Typography variant="h6" component="h2">
+          <Typography
+            variant="h6"
+            component="h2"
+            sx={{
+              display: "flex",
+              alignItems: "center",
+            }}
+          >
             API Keys
           </Typography>
         </Box>
 
-        {Object.keys(apiKeyState.isAuthenticated).some(
-          (p) => apiKeyState.isAuthenticated[p as ApiProvider]
-        ) && (
-          <Chip
-            icon={<CheckIcon />}
-            label="API Keys Active"
-            color="success"
-            size="small"
-            variant="outlined"
+        {/* Provider tabs - takes most of the space */}
+        <Box sx={{ flexGrow: 1 }}>
+          <ProviderTabs
+            currentProvider={currentProvider}
+            isAuthenticated={apiKeyState.isAuthenticated}
+            onProviderChange={apiKeyState.handleProviderChange}
           />
-        )}
-      </Stack>
+        </Box>
 
-      {/* Provider selection tabs */}
-      <ProviderTabs
-        currentProvider={currentProvider}
-        isAuthenticated={apiKeyState.isAuthenticated}
-        onProviderChange={apiKeyState.handleProviderChange}
-      />
+        {/* Status chip - takes minimum space needed */}
+        <Box sx={{ ml: 1, display: "flex", alignItems: "center" }}>
+          {Object.keys(apiKeyState.isAuthenticated).some(
+            (p) => apiKeyState.isAuthenticated[p as ApiProvider]
+          ) && (
+            <Chip
+              icon={<CheckIcon />}
+              label="API Keys Active"
+              color="success"
+              size="small"
+              variant="outlined"
+            />
+          )}
+        </Box>
+      </Stack>
 
       {!apiKeyState.isStored[currentProvider] ||
       apiKeyState.isAuthenticated[currentProvider] ? (
@@ -240,7 +266,11 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
                     type="submit"
                     variant="contained"
                     color="primary"
-                    disabled={!canSubmit() || securityState.isLocked || securityState.isProcessing}
+                    disabled={
+                      !canSubmit() ||
+                      securityState.isLocked ||
+                      securityState.isProcessing
+                    }
                     fullWidth
                     size="small"
                     sx={{
@@ -280,7 +310,9 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
             lockCountdown={securityState.lockCountdown}
             password={passwordState.password}
             passwordError={passwordState.passwordError}
-            isPasswordProtected={webApiKeyStorage.isPasswordProtected.bind(webApiKeyStorage)}
+            isPasswordProtected={webApiKeyStorage.isPasswordProtected.bind(
+              webApiKeyStorage
+            )}
             currentProvider={currentProvider}
             canSubmit={canSubmit()}
           />
@@ -321,7 +353,11 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
                     color="primary"
                     fullWidth
                     sx={{ height: "40px" }}
-                    disabled={!canSubmit() || securityState.isLocked || securityState.isProcessing}
+                    disabled={
+                      !canSubmit() ||
+                      securityState.isLocked ||
+                      securityState.isProcessing
+                    }
                   >
                     {securityState.isProcessing ? (
                       <CircularProgress size={24} color="inherit" />
@@ -353,13 +389,14 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
             lockCountdown={securityState.lockCountdown}
             password={passwordState.password}
             passwordError={passwordState.passwordError}
-            isPasswordProtected={webApiKeyStorage.isPasswordProtected.bind(webApiKeyStorage)}
+            isPasswordProtected={webApiKeyStorage.isPasswordProtected.bind(
+              webApiKeyStorage
+            )}
             currentProvider={currentProvider}
             canSubmit={canSubmit()}
           />
         </Paper>
       )}
-
     </Box>
   );
 };
