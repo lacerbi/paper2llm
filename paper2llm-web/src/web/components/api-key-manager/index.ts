@@ -9,5 +9,4 @@ export { default as ProviderTabs } from "./ProviderTabs";
 export { default as ApiKeyInput } from "./ApiKeyInput";
 export { default as PasswordField } from "./PasswordField";
 export { default as SecurityOptions } from "./SecurityOptions";
-export { default as StatusDisplay } from "./StatusDisplay";
 export { default as ErrorMessage } from "./ErrorMessage";

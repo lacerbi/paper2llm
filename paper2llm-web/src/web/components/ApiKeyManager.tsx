@@ -36,7 +36,6 @@ import ProviderTabs from "./api-key-manager/ProviderTabs";
 import ApiKeyInput from "./api-key-manager/ApiKeyInput";
 import PasswordField from "./api-key-manager/PasswordField";
 import SecurityOptions from "./api-key-manager/SecurityOptions";
-import StatusDisplay from "./api-key-manager/StatusDisplay";
 import ErrorMessage from "./api-key-manager/ErrorMessage";
 
 // Create an instance of the WebApiKeyStorage
@@ -361,8 +360,6 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
         </Paper>
       )}
 
-      {/* Provider key status summary */}
-      <StatusDisplay isAuthenticated={apiKeyState.isAuthenticated} />
     </Box>
   );
 };
