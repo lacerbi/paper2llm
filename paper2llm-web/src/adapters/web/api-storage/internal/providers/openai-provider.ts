@@ -13,8 +13,9 @@ import { ApiProvider } from "../../api-key-storage";
  */
 export class OpenAIProvider extends BaseProvider {
   // Validation pattern for OpenAI API keys
-  // OpenAI keys typically start with 'sk-' followed by a string of alphanumeric characters
-  private readonly validationPattern = /^sk-[A-Za-z0-9]{32,64}$/;
+  // OpenAI keys can start with various prefixes and contain different character sets
+  // Support for keys up to 200 characters to accommodate newer API key formats
+  private readonly validationPattern = /^(sk|org)-[A-Za-z0-9-_]{32,200}$/;
 
   /**
    * Creates a new OpenAIProvider
@@ -27,8 +28,9 @@ export class OpenAIProvider extends BaseProvider {
    * Validates if an API key has the correct format for OpenAI
    *
    * OpenAI API keys typically:
-   * - Start with the prefix 'sk-'
-   * - Are followed by 32-64 alphanumeric characters
+   * - Start with prefixes like 'sk-' or 'org-'
+   * - May be up to 200 characters long (newer formats are longer than older ones)
+   * - Can include alphanumeric characters, hyphens, and underscores
    *
    * @param apiKey The API key to validate
    * @returns true if the API key has a valid format, false otherwise

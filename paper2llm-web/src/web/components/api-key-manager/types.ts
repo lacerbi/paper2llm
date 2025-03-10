@@ -13,6 +13,17 @@ export interface ApiKeyManagerProps {
    * @param provider The provider for which the API key changed
    */
   onApiKeyChange: (apiKey: string, provider: ApiProvider) => void;
+  
+  /**
+   * Callback fired when the provider selection changes
+   * @param provider The newly selected provider
+   */
+  onProviderChange?: (provider: ApiProvider) => void;
+  
+  /**
+   * Currently selected provider
+   */
+  selectedProvider?: ApiProvider;
 }
 
 /**

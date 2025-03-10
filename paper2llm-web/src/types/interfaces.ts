@@ -291,6 +291,17 @@ export interface DomainHandlerRegistry {
 }
 
 /**
+ * Provider-specific vision model information
+ */
+export interface VisionModelInfo {
+  id: string;
+  name: string;
+  description: string;
+  provider: ApiProvider;
+  maxTokens?: number;
+}
+
+/**
  * Service for image description using Vision API
  */
 export interface ImageService {
@@ -298,14 +309,16 @@ export interface ImageService {
    * Describes an image using the Vision API
    * 
    * @param image OcrImage object containing image data
-   * @param apiKey Mistral API key
+   * @param apiKey API key for the provider
+   * @param provider The API provider to use (mistral or openai)
    * @param contextText Optional context to include with the image
-   * @param model Optional model name to use for image description (defaults to pixtral-12b-2409)
+   * @param model Optional model name to use for image description
    * @returns Promise resolving to the image description
    */
   describeImage(
     image: OcrImage,
     apiKey: string,
+    provider: ApiProvider,
     contextText?: string,
     model?: string
   ): Promise<string>;
@@ -314,19 +327,37 @@ export interface ImageService {
    * Describes multiple images in batch
    * 
    * @param images Array of OcrImage objects
-   * @param apiKey Mistral API key
+   * @param apiKey API key for the provider
+   * @param provider The API provider to use (mistral or openai)
    * @param contextMap Optional map of image IDs to context text
    * @param progressReporter Optional progress reporter
-   * @param model Optional model name to use for image description (defaults to pixtral-12b-2409)
+   * @param model Optional model name to use for image description
    * @returns Promise resolving to a map of image IDs to descriptions
    */
   describeImages(
     images: OcrImage[],
     apiKey: string,
+    provider: ApiProvider,
     contextMap?: Map<string, string>,
     progressReporter?: ProgressReporter,
     model?: string
   ): Promise<Map<string, string>>;
+  
+  /**
+   * Gets the available vision models for a provider
+   * 
+   * @param provider The API provider
+   * @returns Array of available vision models
+   */
+  getAvailableModels(provider: ApiProvider): VisionModelInfo[];
+  
+  /**
+   * Gets the default vision model for a provider
+   * 
+   * @param provider The API provider
+   * @returns The default model ID
+   */
+  getDefaultModel(provider: ApiProvider): string;
   
   /**
    * Cancels an ongoing operation if possible

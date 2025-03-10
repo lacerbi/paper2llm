@@ -6,11 +6,12 @@ import {
   OcrOptions, 
   MarkdownOptions, 
   PdfToMdResult,
-  ProgressReporter
+  ProgressReporter,
+  ApiProvider
 } from '../types/interfaces';
 import { mistralOcrService } from './ocr-service';
 import { markdownProcessor } from './markdown-processor';
-import { mistralImageService } from './image-service';
+import { multiProviderImageService } from './image-service';
 
 export class PdfToMdService {
   /**
@@ -22,7 +23,8 @@ export class PdfToMdService {
     ocrOptions: OcrOptions = {},
     markdownOptions: MarkdownOptions = {},
     progressReporter?: ProgressReporter,
-    visionModel?: string
+    visionModel?: string,
+    visionProvider: ApiProvider = 'mistral'
   ): Promise<PdfToMdResult> {
     try {
       // Step 1: Process the PDF with OCR
@@ -77,9 +79,10 @@ export class PdfToMdService {
           const contextMap = markdownProcessor.buildImageContextMap(ocrResult.pages);
           
           // Process all images to get descriptions
-          const imageDescriptions = await mistralImageService.describeImages(
+          const imageDescriptions = await multiProviderImageService.describeImages(
             allImages,
             apiKey,
+            visionProvider,
             contextMap,
             progressReporter,
             visionModel
@@ -138,7 +141,7 @@ export class PdfToMdService {
    */
   public cancelOperation(): void {
     mistralOcrService.cancelOperation();
-    mistralImageService.cancelOperation();
+    multiProviderImageService.cancelOperation();
   }
 }
 
