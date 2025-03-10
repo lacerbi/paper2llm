@@ -44,27 +44,19 @@ const SecurityOptions: React.FC<SecurityOptionsProps> = ({
       <Grid
         container
         alignItems="center"
-        justifyContent="space-between"
+        justifyContent="flex-end"
         sx={{ mb: 1 }}
       >
         <Grid item>
-          <Stack direction="row" alignItems="center" spacing={1}>
-            <Typography variant="subtitle2">
-              API Key Security Information
+          <Stack direction="row" spacing={1} alignItems="center">
+            <Typography variant="body2">
+              Storage & Expiration:
             </Typography>
             <Tooltip title="Keys are only shared with LLM providers and stored encrypted. We recommend temporary session-only storage. There is the option of password-protected persistent storage with an expiration date.">
               <IconButton size="small" color="primary">
                 <InfoIcon fontSize="small" />
               </IconButton>
             </Tooltip>
-          </Stack>
-        </Grid>
-
-        <Grid item>
-          <Stack direction="row" spacing={1} alignItems="center">
-            <Typography variant="body2">
-              Storage & Expiration:
-            </Typography>
             <Select
               value={expiration}
               onChange={onExpirationChange}
