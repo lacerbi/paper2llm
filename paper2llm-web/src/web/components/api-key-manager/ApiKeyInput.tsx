@@ -14,6 +14,7 @@ import {
   Visibility as VisibilityIcon,
   VisibilityOff as VisibilityOffIcon,
   Info as InfoIcon,
+  GetApp as GetAppIcon,
 } from "@mui/icons-material";
 import { ApiProvider } from "../../../types/interfaces";
 import { ProviderApiKeyInfo } from "../../../types/interfaces";
@@ -66,6 +67,15 @@ const ApiKeyInput: React.FC<ApiKeyInputProps> = ({
               <Tooltip title={providerInfo.description}>
                 <InfoIcon fontSize="small" color="action" />
               </Tooltip>
+              <Tooltip title={`Get ${providerInfo.name} API key`}>
+                <IconButton
+                  aria-label={`get ${providerInfo.name} API key`}
+                  onClick={() => window.open(providerInfo.docsUrl, '_blank')}
+                  size="small"
+                >
+                  <GetAppIcon fontSize="small" color="action" />
+                </IconButton>
+              </Tooltip>
             </InputAdornment>
           ),
           endAdornment: (
@@ -83,16 +93,7 @@ const ApiKeyInput: React.FC<ApiKeyInputProps> = ({
           ),
         }}
       />
-      <FormHelperText>
-        <a
-          href={providerInfo.docsUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{ color: theme.palette.primary.main }}
-        >
-          {`Get ${providerInfo.name} API key`}
-        </a>
-      </FormHelperText>
+      {/* FormHelperText with link removed as it's now an icon button in the input field */}
     </>
   );
 };
