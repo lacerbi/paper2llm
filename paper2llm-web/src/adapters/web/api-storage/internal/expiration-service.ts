@@ -2,21 +2,21 @@
 // Handles expiration calculation, validation, and checking with unified interfaces
 // for working with different expiration types and storage backends.
 
-import { 
+import {
   ApiKeyExpiration,
   ApiProvider,
-  ApiKeyStorageType
-} from "../../../types/interfaces";
+  ApiKeyStorageType,
+} from "../api-key-storage";
 import { ApiKeyProvider } from "./interfaces";
 import { StorageOperations } from "./storage-operations";
 
 /**
  * Expiration durations in milliseconds
- * 
+ *
  * Maps expiration types to their corresponding durations in milliseconds.
  * These durations determine how long an API key remains valid before it
  * automatically expires and needs to be re-entered.
- * 
+ *
  * Special values:
  * - 0 for "never" means no expiration
  * - 0 for "session" means the key expires when the browser session ends
@@ -25,13 +25,13 @@ export type ExpirationDurations = Record<ApiKeyExpiration, number>;
 
 /**
  * Interface for expiration service
- * 
+ *
  * Defines methods for managing API key expiration
  */
 export interface ExpirationService {
   /**
    * Gets the expiration setting for the stored API key
-   * 
+   *
    * @param provider Provider to check
    * @param defaultProviderId Default provider ID
    * @returns The expiration setting or null if no key is stored
@@ -40,24 +40,24 @@ export interface ExpirationService {
     provider: ApiProvider,
     defaultProviderId: ApiProvider
   ): ApiKeyExpiration | null;
-  
+
   /**
    * Checks if the stored API key has expired
-   * 
+   *
    * @param provider Provider to check
    * @param storageType Storage type being used
    * @param defaultProviderId Default provider ID
    * @returns true if the API key has expired, false otherwise
    */
   hasExpired(
-    provider: ApiProvider, 
+    provider: ApiProvider,
     storageType: string | null,
     defaultProviderId: ApiProvider
   ): boolean;
-  
+
   /**
    * Calculate an expiration timestamp based on the expiration type
-   * 
+   *
    * @param expiration The expiration type to calculate
    * @returns A timestamp in milliseconds or null for never/session
    */
@@ -66,7 +66,7 @@ export interface ExpirationService {
 
 /**
  * Implementation of the expiration service
- * 
+ *
  * Handles API key expiration management including:
  * - Getting expiration settings from storage
  * - Checking if keys have expired
@@ -75,10 +75,10 @@ export interface ExpirationService {
 export class WebExpirationService implements ExpirationService {
   private readonly expirationDurations: ExpirationDurations;
   private readonly storageOperations: StorageOperations;
-  
+
   /**
    * Creates a new WebExpirationService
-   * 
+   *
    * @param storageOperations Storage operations service to use
    * @param expirationDurations Optional custom expiration durations
    */
@@ -87,7 +87,7 @@ export class WebExpirationService implements ExpirationService {
     expirationDurations?: ExpirationDurations
   ) {
     this.storageOperations = storageOperations;
-    
+
     // Use provided durations or defaults
     this.expirationDurations = expirationDurations || {
       session: 0, // Session expiration is handled by sessionStorage
@@ -97,10 +97,10 @@ export class WebExpirationService implements ExpirationService {
       never: 0, // No expiration
     };
   }
-  
+
   /**
    * Gets the expiration setting for the stored API key
-   * 
+   *
    * @param provider Provider to check
    * @param defaultProviderId Default provider ID
    * @returns The expiration setting or null if no key is stored
@@ -110,7 +110,7 @@ export class WebExpirationService implements ExpirationService {
     defaultProviderId: ApiProvider
   ): ApiKeyExpiration | null {
     const storageType = this.getStorageTypeForProvider(provider);
-    
+
     if (!storageType) {
       return null;
     }
@@ -127,7 +127,7 @@ export class WebExpirationService implements ExpirationService {
 
   /**
    * Checks if the stored API key has expired
-   * 
+   *
    * This method determines if an API key for the specified provider has expired
    * based on its expiration timestamp. Keys stored in sessionStorage never
    * "expire" in this check since they're automatically cleared when the session ends.
@@ -145,7 +145,7 @@ export class WebExpirationService implements ExpirationService {
     if (!storageType) {
       return false;
     }
-    
+
     // Session storage keys expire with the session, so they never "expire" while available
     if (storageType === "session") {
       return false;
@@ -169,15 +169,15 @@ export class WebExpirationService implements ExpirationService {
 
   /**
    * Calculate an expiration timestamp based on the expiration type
-   * 
+   *
    * Converts an expiration type (like "7days" or "30days") into an actual
    * timestamp when the key will expire. This timestamp is stored alongside
    * the key and checked during retrieval.
-   * 
+   *
    * Special cases:
    * - "never" returns null to indicate no expiration
    * - "session" returns null as session expiration is handled by sessionStorage
-   * 
+   *
    * @param expiration The expiration type to calculate
    * @returns A timestamp in milliseconds or null for never/session
    */
@@ -189,14 +189,18 @@ export class WebExpirationService implements ExpirationService {
     const duration = this.expirationDurations[expiration];
     return Date.now() + duration;
   }
-  
+
   /**
    * Helper method to get the storage type for a provider
-   * 
+   *
    * @param provider Provider to check
    * @returns Storage type or null if not found
    */
-  private getStorageTypeForProvider(provider: ApiProvider): ApiKeyStorageType | null {
-    return this.storageOperations.getStorageTypeForProvider(provider) as ApiKeyStorageType | null;
+  private getStorageTypeForProvider(
+    provider: ApiProvider
+  ): ApiKeyStorageType | null {
+    return this.storageOperations.getStorageTypeForProvider(
+      provider
+    ) as ApiKeyStorageType | null;
   }
 }

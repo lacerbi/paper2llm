@@ -43,10 +43,12 @@ import {
   SwapHoriz as SwapHorizIcon,
 } from "@mui/icons-material";
 import {
-  ApiKeyManagerState,
   ApiKeyStorageOptions,
   ApiKeyExpiration,
   ApiProvider,
+} from "../../adapters/web/api-storage";
+import {
+  ApiKeyManagerState,
   ProviderApiKeyInfo,
 } from "../../types/interfaces";
 import { WebApiKeyStorage } from "../../adapters/web/api-storage";

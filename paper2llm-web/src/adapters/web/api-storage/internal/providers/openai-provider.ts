@@ -2,11 +2,11 @@
 // Extends BaseProvider with OpenAI-specific behavior and validation patterns.
 
 import { BaseProvider } from "./base-provider";
-import { ApiProvider } from "../../../../types/interfaces";
+import { ApiProvider } from "../../api-key-storage";
 
 /**
  * Provider implementation for OpenAI API keys
- * 
+ *
  * Handles OpenAI-specific validation and storage patterns.
  * OpenAI API keys have a distinctive format that this provider
  * validates against to ensure correct key format.
@@ -25,11 +25,11 @@ export class OpenAIProvider extends BaseProvider {
 
   /**
    * Validates if an API key has the correct format for OpenAI
-   * 
+   *
    * OpenAI API keys typically:
    * - Start with the prefix 'sk-'
    * - Are followed by 32-64 alphanumeric characters
-   * 
+   *
    * @param apiKey The API key to validate
    * @returns true if the API key has a valid format, false otherwise
    */

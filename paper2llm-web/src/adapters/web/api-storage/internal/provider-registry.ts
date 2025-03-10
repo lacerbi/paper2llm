@@ -1,7 +1,7 @@
 // AI Summary: Implements a registry system for managing API provider implementations.
 // Handles registration, retrieval, and default provider selection with type safety.
 // Acts as the coordination point for all provider-specific operations.
-import { ApiProvider } from "../../../types/interfaces";
+import { ApiProvider } from "../api-key-storage";
 import { ApiKeyProvider, ProviderRegistry } from "./interfaces";
 
 /**

@@ -3,15 +3,15 @@
 // Supports both password-based and automatic session-based encryption with validation.
 
 import { EncryptedKeyData, ValidationInfo } from "./interfaces";
-import { ApiKeyStorageError } from "./errors";
-import { ApiProvider } from "../../../types/interfaces";
+import { ApiKeyStorageError } from "../errors";
+import { ApiProvider } from "../api-key-storage";
 
 /**
  * Encryption and validation utilities for secure API key storage
- * 
+ *
  * This module provides a set of utilities for encrypting, decrypting, and validating API keys
  * with either user-provided passwords or auto-generated session keys.
- * 
+ *
  * Security model:
  * - Uses simple but effective XOR encryption with password expansion
  * - Implements validation to verify decryption was performed with correct password
@@ -93,7 +93,7 @@ export const encryptionUtils = {
    * Uses Web Crypto API when available for better randomness, with fallback
    * for older browsers. The salt is used to prevent rainbow table attacks
    * when validating decryption.
-   * 
+   *
    * @returns A random salt as a Base64 string
    */
   generateValidationSalt(): string {
@@ -120,19 +120,15 @@ export const encryptionUtils = {
   /**
    * Creates a validation hash from the API key and password
    * This allows verification that decryption was performed with the correct password.
-   * Works similarly to an HMAC function, creating a unique signature based on 
+   * Works similarly to an HMAC function, creating a unique signature based on
    * the API key, password, and a random salt.
-   * 
+   *
    * @param apiKey The API key to validate
    * @param password The password used for encryption
    * @param salt A random salt to prevent rainbow table attacks
    * @returns Base64 encoded validation hash
    */
-  createValidationData(
-    apiKey: string,
-    password: string,
-    salt: string
-  ): string {
+  createValidationData(apiKey: string, password: string, salt: string): string {
     // Simple HMAC-like function using the password and salt
     const message = apiKey + salt;
     let hmac = "";
@@ -175,7 +171,9 @@ export const encryptionUtils = {
       // Parse the encrypted data
       const parsedData: EncryptedKeyData = JSON.parse(atob(encryptedData));
       const encryptedKey = parsedData.encryptedKey;
-      const validationInfo = JSON.parse(atob(parsedData.validation)) as ValidationInfo;
+      const validationInfo = JSON.parse(
+        atob(parsedData.validation)
+      ) as ValidationInfo;
 
       // Step 1: Decrypt the key using XOR
       const encrypted = atob(encryptedKey); // Base64 decode
@@ -249,7 +247,7 @@ export const encryptionUtils = {
    * Gets or creates a secure session-based encryption key
    * This function either retrieves an existing session key or generates a new one
    * when needed. Session keys are automatically generated and do not require user input.
-   * 
+   *
    * The key generation:
    * - Uses Web Crypto API when available for cryptographically secure randomness
    * - Falls back to Math.random() with sufficient entropy when Web Crypto is unavailable
@@ -286,5 +284,5 @@ export const encryptionUtils = {
     }
 
     return sessionKey;
-  }
+  },
 };

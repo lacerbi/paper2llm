@@ -6,7 +6,7 @@ import {
   ApiKeyStorageType,
   ApiKeyExpiration,
   ApiKeyStorageOptions,
-} from "../../../types/interfaces";
+} from "../api-key-storage";
 
 /**
  * Provider-specific API key interface
@@ -137,11 +137,11 @@ export function createDefaultStorageKeyPatterns(): StorageKeyPatterns {
 
 /**
  * Expiration durations in milliseconds
- * 
+ *
  * Maps expiration types to their corresponding durations in milliseconds.
  * These durations determine how long an API key remains valid before it
  * automatically expires and needs to be re-entered.
- * 
+ *
  * Special values:
  * - 0 for "never" means no expiration
  * - 0 for "session" means the key expires when the browser session ends
@@ -150,13 +150,13 @@ export type ExpirationDurations = Record<ApiKeyExpiration, number>;
 
 /**
  * Interface for expiration service
- * 
+ *
  * Defines methods for managing API key expiration
  */
 export interface ExpirationService {
   /**
    * Gets the expiration setting for the stored API key
-   * 
+   *
    * @param provider Provider to check
    * @param defaultProviderId Default provider ID
    * @returns The expiration setting or null if no key is stored
@@ -165,24 +165,24 @@ export interface ExpirationService {
     provider: ApiProvider,
     defaultProviderId: ApiProvider
   ): ApiKeyExpiration | null;
-  
+
   /**
    * Checks if the stored API key has expired
-   * 
+   *
    * @param provider Provider to check
    * @param storageType Storage type being used
    * @param defaultProviderId Default provider ID
    * @returns true if the API key has expired, false otherwise
    */
   hasExpired(
-    provider: ApiProvider, 
+    provider: ApiProvider,
     storageType: string | null,
     defaultProviderId: ApiProvider
   ): boolean;
-  
+
   /**
    * Calculate an expiration timestamp based on the expiration type
-   * 
+   *
    * @param expiration The expiration type to calculate
    * @returns A timestamp in milliseconds or null for never/session
    */
@@ -191,14 +191,14 @@ export interface ExpirationService {
 
 /**
  * Interface for storage operations service
- * 
+ *
  * Defines methods for storage management and key pattern handling
  * used by the API key storage system.
  */
 export interface StorageOperations {
   /**
    * Gets the appropriate storage based on the storage type
-   * 
+   *
    * @param storageType The storage type to use (local or session)
    * @returns The corresponding Storage object
    */
@@ -206,7 +206,7 @@ export interface StorageOperations {
 
   /**
    * Gets a value from storage for a specific provider
-   * 
+   *
    * @param key The base key pattern to use
    * @param provider The provider to get the value for
    * @param storageType The storage type to use
@@ -220,7 +220,7 @@ export interface StorageOperations {
 
   /**
    * Sets a value in storage for a specific provider
-   * 
+   *
    * @param key The base key pattern to use
    * @param value The value to store
    * @param provider The provider to set the value for
@@ -235,7 +235,7 @@ export interface StorageOperations {
 
   /**
    * Removes a value from storage for a specific provider
-   * 
+   *
    * @param key The base key pattern to use
    * @param provider The provider to remove the value for
    * @param fromLocal Whether to remove from localStorage
@@ -250,7 +250,7 @@ export interface StorageOperations {
 
   /**
    * Checks if a value exists in storage for a specific provider
-   * 
+   *
    * @param key The base key pattern to use
    * @param provider The provider to check
    * @param checkLocal Whether to check localStorage
@@ -263,10 +263,10 @@ export interface StorageOperations {
     checkLocal?: boolean,
     checkSession?: boolean
   ): boolean;
-  
+
   /**
    * Gets the storage type for a provider
-   * 
+   *
    * @param provider Provider to check
    * @returns Storage type or null if not found
    */
@@ -309,7 +309,7 @@ export interface ProviderRegistry {
    * @returns The default provider implementation
    */
   getDefaultProvider(): ApiKeyProvider;
-  
+
   /**
    * Gets the default provider ID
    *

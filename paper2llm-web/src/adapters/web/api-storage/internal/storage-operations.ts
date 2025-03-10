@@ -1,24 +1,21 @@
 // AI Summary: Provides storage operations for API key management.
-// Handles localStorage/sessionStorage access, key pattern handling, 
+// Handles localStorage/sessionStorage access, key pattern handling,
 // and common storage operations while supporting provider-specific patterns.
 
-import { 
-  ApiKeyStorageType, 
-  ApiProvider 
-} from "../../../types/interfaces";
+import { ApiKeyStorageType, ApiProvider } from "../api-key-storage";
 import { StorageKeyPatterns } from "./interfaces";
 import { ApiKeyProvider } from "./interfaces";
 
 /**
  * Interface for storage operations service
- * 
+ *
  * Defines methods for storage management and key pattern handling
  * used by the API key storage system.
  */
 export interface StorageOperations {
   /**
    * Gets the appropriate storage based on the storage type
-   * 
+   *
    * @param storageType The storage type to use (local or session)
    * @returns The corresponding Storage object
    */
@@ -26,7 +23,7 @@ export interface StorageOperations {
 
   /**
    * Gets a value from storage for a specific provider
-   * 
+   *
    * @param key The base key pattern to use
    * @param provider The provider to get the value for
    * @param storageType The storage type to use
@@ -40,7 +37,7 @@ export interface StorageOperations {
 
   /**
    * Sets a value in storage for a specific provider
-   * 
+   *
    * @param key The base key pattern to use
    * @param value The value to store
    * @param provider The provider to set the value for
@@ -55,7 +52,7 @@ export interface StorageOperations {
 
   /**
    * Removes a value from storage for a specific provider
-   * 
+   *
    * @param key The base key pattern to use
    * @param provider The provider to remove the value for
    * @param fromLocal Whether to remove from localStorage
@@ -70,7 +67,7 @@ export interface StorageOperations {
 
   /**
    * Checks if a value exists in storage for a specific provider
-   * 
+   *
    * @param key The base key pattern to use
    * @param provider The provider to check
    * @param checkLocal Whether to check localStorage
@@ -83,10 +80,10 @@ export interface StorageOperations {
     checkLocal?: boolean,
     checkSession?: boolean
   ): boolean;
-  
+
   /**
    * Gets the storage type for a provider
-   * 
+   *
    * @param provider Provider to check
    * @returns Storage type or null if not found
    */
@@ -95,13 +92,13 @@ export interface StorageOperations {
 
 /**
  * Implements storage operations for API key management
- * 
+ *
  * This class handles:
  * - Storage access (localStorage/sessionStorage)
  * - Storage key pattern management
  * - Provider-specific key generation
  * - Reading, writing, and removing values
- * 
+ *
  * It separates the storage mechanics from the business logic
  * of API key management.
  */
@@ -110,7 +107,7 @@ export class WebStorageOperations implements StorageOperations {
 
   /**
    * Creates a new WebStorageOperations
-   * 
+   *
    * @param keyPatterns Storage key patterns with {provider} placeholder
    */
   constructor(keyPatterns: StorageKeyPatterns) {
@@ -119,7 +116,7 @@ export class WebStorageOperations implements StorageOperations {
 
   /**
    * Gets the appropriate storage based on the storage type
-   * 
+   *
    * @param storageType The storage type to use (local or session)
    * @returns The corresponding Storage object
    */
@@ -129,10 +126,10 @@ export class WebStorageOperations implements StorageOperations {
 
   /**
    * Gets a value from storage for a specific provider
-   * 
+   *
    * Retrieves a value from the appropriate storage using the provider-specific key.
    * If storageType is null, it checks both localStorage and sessionStorage.
-   * 
+   *
    * @param key The base key pattern to use
    * @param provider The provider to get the value for
    * @param storageType The storage type to use, or null to check both
@@ -153,15 +150,14 @@ export class WebStorageOperations implements StorageOperations {
     } else {
       // Check both storages if no specific type is provided
       return (
-        localStorage.getItem(providerKey) ||
-        sessionStorage.getItem(providerKey)
+        localStorage.getItem(providerKey) || sessionStorage.getItem(providerKey)
       );
     }
   }
 
   /**
    * Sets a value in storage for a specific provider
-   * 
+   *
    * @param key The base key pattern to use
    * @param value The value to store
    * @param provider The provider to set the value for
@@ -183,7 +179,7 @@ export class WebStorageOperations implements StorageOperations {
 
   /**
    * Removes a value from storage for a specific provider
-   * 
+   *
    * @param key The base key pattern to use
    * @param provider The provider to remove the value for
    * @param fromLocal Whether to remove from localStorage (default: true)
@@ -209,7 +205,7 @@ export class WebStorageOperations implements StorageOperations {
 
   /**
    * Checks if a value exists in storage for a specific provider
-   * 
+   *
    * @param key The base key pattern to use
    * @param provider The provider to check
    * @param checkLocal Whether to check localStorage (default: true)
@@ -234,10 +230,10 @@ export class WebStorageOperations implements StorageOperations {
     }
     return false;
   }
-  
+
   /**
    * Gets the storage type for a provider
-   * 
+   *
    * @param provider Provider to check
    * @returns Storage type or null if not found
    */
@@ -245,8 +241,8 @@ export class WebStorageOperations implements StorageOperations {
     // Check localStorage first
     if (this.hasValue("storageKeyPattern", provider, true, false)) {
       const storageType = this.getValue(
-        "storageTypeKeyPattern", 
-        provider, 
+        "storageTypeKeyPattern",
+        provider,
         "local"
       );
       if (storageType) {
@@ -257,21 +253,21 @@ export class WebStorageOperations implements StorageOperations {
     // Then check sessionStorage
     if (this.hasValue("storageKeyPattern", provider, false, true)) {
       const storageType = this.getValue(
-        "storageTypeKeyPattern", 
-        provider, 
+        "storageTypeKeyPattern",
+        provider,
         "session"
       );
       if (storageType) {
         return storageType;
       }
     }
-    
+
     return null;
   }
 
   /**
    * Gets a provider-specific key by replacing the {provider} placeholder
-   * 
+   *
    * @param key The base key pattern to use
    * @param provider The provider ID to insert
    * @returns The provider-specific key

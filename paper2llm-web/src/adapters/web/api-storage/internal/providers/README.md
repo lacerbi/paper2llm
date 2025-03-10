@@ -68,9 +68,9 @@ To add support for a new API provider:
 ```typescript
 // example-provider.ts
 import { BaseProvider } from "./base-provider";
-import { ApiProvider } from "../../../../types/interfaces";
+import { ApiProvider } from "../../../api-key-storage"; // Updated import path
 
-// First update interfaces.ts to add the new provider type
+// First update api-key-storage.ts to add the new provider type
 // export type ApiProvider = 'mistral' | 'openai' | 'exampleapi';
 
 export class ExampleAPIProvider extends BaseProvider {
@@ -103,6 +103,14 @@ export function createDefaultProviders() {
 Providers are automatically registered with the `ProviderRegistry` when the `WebApiKeyStorage` class is initialized. You can also manually register providers using the `registerProvider` method on the registry:
 
 ```typescript
+import { WebApiKeyStorage } from "../../api-storage";
+import { WebProviderRegistry } from "../provider-registry";
+import { CustomProvider } from "./custom-provider";
+
+// Using the public API (recommended)
+const apiKeyStorage = new WebApiKeyStorage();
+
+// Or accessing the provider registry directly (advanced usage)
 const providerRegistry = new WebProviderRegistry();
 const customProvider = new CustomProvider();
 providerRegistry.registerProvider(customProvider);
