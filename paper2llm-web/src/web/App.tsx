@@ -15,6 +15,7 @@ import {
   Button,
   useTheme,
   FormControl,
+  FormHelperText,
   InputLabel,
   Select,
   MenuItem,
@@ -37,6 +38,7 @@ import {
 import { webProgressReporter } from "../adapters/web/progress-reporter";
 import { pdfToMdService } from "../core/pdf-to-md";
 import { multiProviderImageService } from "../core/image-service";
+import { PROVIDER_INFO } from "./components/api-key-manager/constants";
 
 const App: React.FC = () => {
   const theme = useTheme();
@@ -66,40 +68,86 @@ const App: React.FC = () => {
   // Handle API key changes
   const handleApiKeyChange = (key: string, provider: ApiProvider) => {
     setApiKeys((prev) => ({ ...prev, [provider]: key }));
-    setIsApiKeyValid((prev) => ({ ...prev, [provider]: key.length > 0 }));
+    const isValid = key.length > 0;
+    setIsApiKeyValid((prev) => ({ ...prev, [provider]: isValid }));
 
-    // If this is the currently selected provider, update the model options
-    if (provider === selectedProvider) {
-      updateAvailableModels(provider);
+    // Update available models after updating the API key validity state
+    setTimeout(() => updateAvailableModels(), 0);
+    
+    // If this provider is now valid but the selected provider isn't,
+    // switch to this provider
+    if (isValid && !isApiKeyValid[selectedProvider]) {
+      setSelectedProvider(provider);
     }
   };
 
   // Handle provider selection change
   const handleProviderChange = (provider: ApiProvider) => {
     setSelectedProvider(provider);
-    updateAvailableModels(provider);
-
-    // Set default model when switching providers
-    const defaultModel = multiProviderImageService.getDefaultModel(provider);
-    if (defaultModel) {
-      setVisionModel(defaultModel);
+    
+    // Set default model when switching providers if that provider has a valid key
+    if (isApiKeyValid[provider]) {
+      const defaultModel = multiProviderImageService.getDefaultModel(provider);
+      if (defaultModel) {
+        setVisionModel(defaultModel);
+      }
     }
   };
 
-  // Update available models based on selected provider
-  const updateAvailableModels = useCallback((provider: ApiProvider) => {
-    const models = multiProviderImageService.getAvailableModels(provider);
-    setAvailableModels(models);
-  }, []);
+  // Update available models from all providers with valid API keys
+  const updateAvailableModels = useCallback(() => {
+    const allModels: VisionModelInfo[] = [];
+    
+    // Collect models from all providers with valid API keys
+    Object.keys(isApiKeyValid).forEach(providerKey => {
+      const provider = providerKey as ApiProvider;
+      if (isApiKeyValid[provider]) {
+        const providerModels = multiProviderImageService.getAvailableModels(provider);
+        allModels.push(...providerModels);
+      }
+    });
+    
+    setAvailableModels(allModels);
+  }, [isApiKeyValid]);
 
-  // Initialize available models
+  // Initialize available models when API key validity changes
   useEffect(() => {
-    updateAvailableModels(selectedProvider);
-  }, [selectedProvider, updateAvailableModels]);
+    updateAvailableModels();
+  }, [isApiKeyValid, updateAvailableModels]);
+
+  // If the current provider's API key becomes invalid,
+  // check if any other provider has a valid key and switch to it
+  useEffect(() => {
+    if (!isApiKeyValid[selectedProvider]) {
+      const validProvider = Object.keys(isApiKeyValid).find(
+        (p) => isApiKeyValid[p as ApiProvider]
+      ) as ApiProvider | undefined;
+      
+      if (validProvider) {
+        setSelectedProvider(validProvider);
+      }
+    }
+  }, [isApiKeyValid, selectedProvider]);
+
+  // If the available models change, ensure the selected model is valid
+  useEffect(() => {
+    if (availableModels.length > 0 && 
+        !availableModels.some(model => model.id === visionModel)) {
+      // If current model is not in available models, use the first available
+      setVisionModel(availableModels[0].id);
+    }
+  }, [availableModels, visionModel]);
 
   // Handle vision model selection changes
   const handleModelChange = (event: SelectChangeEvent) => {
-    setVisionModel(event.target.value);
+    const modelId = event.target.value;
+    setVisionModel(modelId);
+    
+    // Find the provider for this model and update the selected provider
+    const selectedModelInfo = availableModels.find(model => model.id === modelId);
+    if (selectedModelInfo) {
+      setSelectedProvider(selectedModelInfo.provider);
+    }
   };
 
   // Handle file selection
@@ -135,17 +183,28 @@ const App: React.FC = () => {
     // Always require Mistral key for OCR
     const mistralKey = apiKeys.mistral;
 
-    // Use selected provider key for image description
-    const visionKey = apiKeys[selectedProvider];
+    // Find the provider for the selected model
+    const selectedModelInfo = availableModels.find(model => model.id === visionModel);
+    if (!selectedModelInfo) {
+      setProcessingError(
+        new Error(
+          `Could not find information for the selected model. Please select a different model.`
+        )
+      );
+      return;
+    }
 
-    // Check if we have a valid key for image description
-    const hasValidVisionKey = isApiKeyValid[selectedProvider];
-
-    if (!mistralKey || !hasValidVisionKey) {
+    const modelProvider = selectedModelInfo.provider;
+    
+    // Get the API key for the model's provider
+    const visionKey = apiKeys[modelProvider];
+    
+    // Check if we have valid keys
+    if (!mistralKey || !visionKey) {
       setProcessingError(
         new Error(
           `Missing required API key(s). Please ensure both Mistral (for OCR) and ${
-            selectedProvider === "mistral" ? "Mistral" : "OpenAI"
+            PROVIDER_INFO[modelProvider].name
           } (for image processing) keys are provided.`
         )
       );
@@ -172,7 +231,7 @@ const App: React.FC = () => {
         },
         webProgressReporter,
         visionModel,
-        selectedProvider // Pass the selected provider for image description
+        selectedModelInfo.provider // Pass the model's provider for image description
       );
 
       setConversionResult(result);
@@ -251,23 +310,36 @@ const App: React.FC = () => {
                     <Box sx={{ mt: 3 }}>
                       <Grid container spacing={2} alignItems="center">
                         <Grid item xs={12} sm={6}>
-                          <FormControl fullWidth size="small">
+                          <FormControl 
+                            fullWidth 
+                            size="small" 
+                            disabled={availableModels.length === 0}
+                          >
                             <InputLabel id="vision-model-label">
-                              Vision Model
+                              Vision Model {availableModels.length === 0 ? "(No valid API keys)" : ""}
                             </InputLabel>
                             <Select
                               labelId="vision-model-label"
                               id="vision-model-select"
                               value={visionModel}
-                              label="Vision Model"
+                              label={`Vision Model ${availableModels.length === 0 ? "(No valid API keys)" : ""}`}
                               onChange={handleModelChange}
                             >
-                              {availableModels.map((model) => (
-                                <MenuItem key={model.id} value={model.id}>
-                                  {model.name} ({model.id})
+                              {availableModels.length === 0 ? (
+                                <MenuItem value="" disabled>
+                                  No models available - please enter valid API keys
                                 </MenuItem>
-                              ))}
+                              ) : (
+                                availableModels.map((model) => (
+                                  <MenuItem key={model.id} value={model.id}>
+                                    {PROVIDER_INFO[model.provider].name}: {model.name} ({model.id})
+                                  </MenuItem>
+                                ))
+                              )}
                             </Select>
+                            <FormHelperText>
+                              Showing models from all providers with valid API keys
+                            </FormHelperText>
                           </FormControl>
                         </Grid>
                         <Grid item xs={12} sm={6}>
