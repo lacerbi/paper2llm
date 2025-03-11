@@ -46,12 +46,14 @@ const App: React.FC = () => {
   const [apiKeys, setApiKeys] = useState<Record<ApiProvider, string>>({
     mistral: "",
     openai: "",
+    gemini: "",
   });
   const [isApiKeyValid, setIsApiKeyValid] = useState<
     Record<ApiProvider, boolean>
   >({
     mistral: false,
     openai: false,
+    gemini: false,
   });
   const [selectedProvider, setSelectedProvider] =
     useState<ApiProvider>("mistral");
@@ -337,7 +339,9 @@ const App: React.FC = () => {
 
             <Divider sx={{ my: 3 }} />
 
-            {(isApiKeyValid.mistral || isApiKeyValid.openai) &&
+            {(isApiKeyValid.mistral ||
+              isApiKeyValid.openai ||
+              isApiKeyValid.gemini) &&
               !conversionResult && (
                 <Box mb={4}>
                   <FileUploader onFileSelected={handleFileSelected} />
@@ -405,7 +409,11 @@ const App: React.FC = () => {
                 </Box>
               )}
 
-            {!(isApiKeyValid.mistral || isApiKeyValid.openai) && (
+            {!(
+              isApiKeyValid.mistral ||
+              isApiKeyValid.openai ||
+              isApiKeyValid.gemini
+            ) && (
               <Paper
                 sx={{
                   p: 3,
@@ -438,7 +446,7 @@ const App: React.FC = () => {
                     your Mistral AI API key
                   </a>{" "}
                   and other API keys above.{" "}
-                  <Tooltip title="Mistral AI's free API tier (with usage limits) is compatible with paper2llm. OCR processing requires a Mistral API key, while image description can use either Mistral or OpenAI. We have no affiliation with either provider.">
+                  <Tooltip title="Mistral AI's free API tier (with usage limits) is compatible with paper2llm. OCR processing requires a Mistral API key, while image description can use any providers. We have no affiliation with any of these providers.">
                     <InfoIcon
                       fontSize="small"
                       color="action"
