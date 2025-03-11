@@ -229,6 +229,8 @@ export interface PdfToMdResult {
     originalUrl?: string;
   };
   timestamp: string;
+  visionModel?: string;
+  visionModelProvider?: ApiProvider;
 }
 
 /**

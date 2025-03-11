@@ -126,7 +126,9 @@ export class PdfToMdService {
           source: file.source,
           originalUrl: file.originalUrl
         },
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        visionModel: visionModel,
+        visionModelProvider: visionProvider
       };
       
       return finalResult;
