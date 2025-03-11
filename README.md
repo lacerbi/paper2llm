@@ -14,9 +14,10 @@ You can follow me on [X](https://x.com/AcerbiLuigi) and [Bluesky](https://bsky.a
 
 - We have no affiliation or financial relationship with Mistral AI, besides sympathy for a European AI company and appreciation for their AI models, nor with any other LLM providers.
 - This is a *research preview*, as they say. Use at your own risk and with all the caveats of modern AI and LLM usage.
-- In particular, image descriptions might be off in clear or subtle ways. The default model, Pixtral 12B, is a fantastic model for its size, but might not be best suited for understanding complex diagrams and concepts.
+- In particular, image descriptions might be off in clear or subtle ways and you should double-check and fix it as needed.
+  - The default model, Pixtral 12B, is a fantastic model for its size, but might not be best suited for understanding complex diagrams and concepts.
   - See if [Pixtral Large](https://mistral.ai/en/news/pixtral-large) works better (you may need API credits). It's unclear if Pixtral Large is available on the free API tier - the API call is not rejected, but it might redirect to Pixtral 12B.
-  - We offer support for other providers with advanced vision capabilities.
+  - We offer support for other models with advanced vision capabilities. GPT-4o seems to do a reasonably good job.
 
 ## License
 
