@@ -230,10 +230,19 @@ const App: React.FC = () => {
       visionKey = apiKeys[modelProvider];
 
       // Check if we have valid keys when not using "None" option
-      if (!mistralKey || !visionKey) {
+      if (!mistralKey) {
         setProcessingError(
           new Error(
-            `Missing required API key(s). Please ensure both Mistral (for OCR) and ${PROVIDER_INFO[modelProvider].name} (for image processing) keys are provided.`
+            `Missing required Mistral API key for OCR processing. This is required to process PDFs.`
+          )
+        );
+        return;
+      }
+
+      if (!visionKey) {
+        setProcessingError(
+          new Error(
+            `Missing required ${PROVIDER_INFO[modelProvider].name} API key for image processing. Please provide this key or select "None" for image descriptions.`
           )
         );
         return;
@@ -339,81 +348,74 @@ const App: React.FC = () => {
 
             <Divider sx={{ my: 3 }} />
 
-            {(isApiKeyValid.mistral ||
-              isApiKeyValid.openai ||
-              isApiKeyValid.gemini) &&
-              !conversionResult && (
-                <Box mb={4}>
-                  <FileUploader onFileSelected={handleFileSelected} />
+            {isApiKeyValid.mistral && !conversionResult && (
+              <Box mb={4}>
+                <FileUploader onFileSelected={handleFileSelected} />
 
-                  {pdfFile && !isProcessing && (
-                    <Box sx={{ mt: 3 }}>
-                      <Grid container spacing={2} alignItems="center">
-                        <Grid item xs={12} sm={6}>
-                          <FormControl
-                            fullWidth
-                            size="small"
-                            disabled={availableModels.length === 0}
-                          >
-                            <InputLabel id="vision-model-label">
-                              Vision Model (for image descriptions){" "}
-                              {availableModels.length === 0
+                {pdfFile && !isProcessing && (
+                  <Box sx={{ mt: 3 }}>
+                    <Grid container spacing={2} alignItems="center">
+                      <Grid item xs={12} sm={6}>
+                        <FormControl
+                          fullWidth
+                          size="small"
+                          disabled={availableModels.length === 0}
+                        >
+                          <InputLabel id="vision-model-label">
+                            Vision Model (for image descriptions){" "}
+                            {availableModels.length === 0
+                              ? "(No valid API keys)"
+                              : ""}
+                          </InputLabel>
+                          <Select
+                            labelId="vision-model-label"
+                            id="vision-model-select"
+                            value={visionModel}
+                            label={`Vision Model (for image descriptions)${
+                              availableModels.length === 0
                                 ? "(No valid API keys)"
-                                : ""}
-                            </InputLabel>
-                            <Select
-                              labelId="vision-model-label"
-                              id="vision-model-select"
-                              value={visionModel}
-                              label={`Vision Model (for image descriptions)${
-                                availableModels.length === 0
-                                  ? "(No valid API keys)"
-                                  : ""
-                              }`}
-                              onChange={handleModelChange}
-                            >
-                              {availableModels.length === 0 ? (
-                                <MenuItem value="" disabled>
-                                  No models available - please enter valid API
-                                  keys
-                                </MenuItem>
-                              ) : (
-                                availableModels.map((model) => (
-                                  <MenuItem key={model.id} value={model.id}>
-                                    {model.id === NONE_OPTION_ID
-                                      ? // For the "None" option, don't show provider prefix
-                                        `${model.name}`
-                                      : // For all other models, show provider prefix
-                                        `${
-                                          PROVIDER_INFO[model.provider].name
-                                        }: ${model.name} (${model.id})`}
-                                  </MenuItem>
-                                ))
-                              )}
-                            </Select>
-                          </FormControl>
-                        </Grid>
-                        <Grid item xs={12} sm={6}>
-                          <Button
-                            variant="contained"
-                            color="secondary"
-                            fullWidth
-                            onClick={startConversion}
+                                : ""
+                            }`}
+                            onChange={handleModelChange}
                           >
-                            Process PDF
-                          </Button>
-                        </Grid>
+                            {availableModels.length === 0 ? (
+                              <MenuItem value="" disabled>
+                                No models available - please enter valid API
+                                keys
+                              </MenuItem>
+                            ) : (
+                              availableModels.map((model) => (
+                                <MenuItem key={model.id} value={model.id}>
+                                  {model.id === NONE_OPTION_ID
+                                    ? // For the "None" option, don't show provider prefix
+                                      `${model.name}`
+                                    : // For all other models, show provider prefix
+                                      `${PROVIDER_INFO[model.provider].name}: ${
+                                        model.name
+                                      } (${model.id})`}
+                                </MenuItem>
+                              ))
+                            )}
+                          </Select>
+                        </FormControl>
                       </Grid>
-                    </Box>
-                  )}
-                </Box>
-              )}
+                      <Grid item xs={12} sm={6}>
+                        <Button
+                          variant="contained"
+                          color="secondary"
+                          fullWidth
+                          onClick={startConversion}
+                        >
+                          Process PDF
+                        </Button>
+                      </Grid>
+                    </Grid>
+                  </Box>
+                )}
+              </Box>
+            )}
 
-            {!(
-              isApiKeyValid.mistral ||
-              isApiKeyValid.openai ||
-              isApiKeyValid.gemini
-            ) && (
+            {!isApiKeyValid.mistral && (
               <Paper
                 sx={{
                   p: 3,
@@ -445,8 +447,8 @@ const App: React.FC = () => {
                   >
                     your Mistral AI API key
                   </a>{" "}
-                  and other API keys above.{" "}
-                  <Tooltip title="Mistral AI's free API tier (with usage limits) is compatible with paper2llm. OCR processing requires a Mistral API key, while image description can use any providers. We have no affiliation with any of these providers.">
+                  above to continue.{" "}
+                  <Tooltip title="Mistral AI's free API tier (with usage limits) is compatible with paper2llm. OCR processing requires a Mistral API key, while image description can use any of the supported providers. We have no affiliation with any of these providers.">
                     <InfoIcon
                       fontSize="small"
                       color="action"
