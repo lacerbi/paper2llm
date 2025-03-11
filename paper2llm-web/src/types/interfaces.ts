@@ -203,6 +203,7 @@ export interface MarkdownOptions {
   processImages?: boolean;
   keepOriginalImages?: boolean;
   debugMode?: boolean;
+  replaceImagesWithPlaceholder?: boolean; // Option to replace images with "[not displayed]" text
 }
 
 /**

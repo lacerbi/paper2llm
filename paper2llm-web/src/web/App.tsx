@@ -62,6 +62,16 @@ const App: React.FC = () => {
   );
   const [conversionResult, setConversionResult] =
     useState<PdfToMdResult | null>(null);
+  // Special constant for the "None" option
+  const NONE_OPTION_ID = "none";
+  const NONE_OPTION: VisionModelInfo = {
+    id: NONE_OPTION_ID,
+    name: "None (no image descriptions)",
+    description:
+      "Skip image processing and replace images with placeholder text",
+    provider: "mistral", // Default provider, doesn't matter for this option
+  };
+
   const [visionModel, setVisionModel] = useState<string>("pixtral-12b-2409");
   const [availableModels, setAvailableModels] = useState<VisionModelInfo[]>([]);
 
@@ -108,7 +118,8 @@ const App: React.FC = () => {
       }
     });
 
-    setAvailableModels(allModels);
+    // Always add the "None" option at the beginning
+    setAvailableModels([NONE_OPTION, ...allModels]);
   }, [isApiKeyValid]);
 
   // Initialize available models when API key validity changes
@@ -151,7 +162,10 @@ const App: React.FC = () => {
       (model) => model.id === modelId
     );
     if (selectedModelInfo) {
-      setSelectedProvider(selectedModelInfo.provider);
+      // Only update the provider if it's not the "None" option
+      if (modelId !== NONE_OPTION_ID) {
+        setSelectedProvider(selectedModelInfo.provider);
+      }
     }
   };
 
@@ -188,32 +202,48 @@ const App: React.FC = () => {
     // Always require Mistral key for OCR
     const mistralKey = apiKeys.mistral;
 
-    // Find the provider for the selected model
-    const selectedModelInfo = availableModels.find(
-      (model) => model.id === visionModel
-    );
-    if (!selectedModelInfo) {
-      setProcessingError(
-        new Error(
-          `Could not find information for the selected model. Please select a different model.`
-        )
+    // Check if the "None" option is selected
+    const isNoneOptionSelected = visionModel === NONE_OPTION_ID;
+
+    // Find the provider for the selected model if not using "None" option
+    let modelProvider: ApiProvider = "mistral"; // Default
+    let visionKey = "";
+
+    if (!isNoneOptionSelected) {
+      const selectedModelInfo = availableModels.find(
+        (model) => model.id === visionModel
       );
-      return;
-    }
+      if (!selectedModelInfo) {
+        setProcessingError(
+          new Error(
+            `Could not find information for the selected model. Please select a different model.`
+          )
+        );
+        return;
+      }
 
-    const modelProvider = selectedModelInfo.provider;
+      modelProvider = selectedModelInfo.provider;
 
-    // Get the API key for the model's provider
-    const visionKey = apiKeys[modelProvider];
+      // Get the API key for the model's provider
+      visionKey = apiKeys[modelProvider];
 
-    // Check if we have valid keys
-    if (!mistralKey || !visionKey) {
-      setProcessingError(
-        new Error(
-          `Missing required API key(s). Please ensure both Mistral (for OCR) and ${PROVIDER_INFO[modelProvider].name} (for image processing) keys are provided.`
-        )
-      );
-      return;
+      // Check if we have valid keys when not using "None" option
+      if (!mistralKey || !visionKey) {
+        setProcessingError(
+          new Error(
+            `Missing required API key(s). Please ensure both Mistral (for OCR) and ${PROVIDER_INFO[modelProvider].name} (for image processing) keys are provided.`
+          )
+        );
+        return;
+      }
+    } else {
+      // Only check for Mistral OCR API key when using "None" option
+      if (!mistralKey) {
+        setProcessingError(
+          new Error(`Missing required Mistral API key for OCR processing.`)
+        );
+        return;
+      }
     }
 
     try {
@@ -232,12 +262,12 @@ const App: React.FC = () => {
           addPageSeparators: true,
           normalizeLineBreaks: true,
           extractImageReferences: true,
-          processImages: true,
+          processImages: visionModel !== NONE_OPTION_ID, // Skip image processing if "None" option is selected
           keepOriginalImages: false,
         },
         webProgressReporter,
-        visionModel,
-        selectedModelInfo.provider // Pass the model's provider for image description
+        isNoneOptionSelected ? undefined : visionModel,
+        isNoneOptionSelected ? undefined : modelProvider // Only pass provider if not using "None" option
       );
 
       setConversionResult(result);
@@ -346,8 +376,13 @@ const App: React.FC = () => {
                               ) : (
                                 availableModels.map((model) => (
                                   <MenuItem key={model.id} value={model.id}>
-                                    {PROVIDER_INFO[model.provider].name}:{" "}
-                                    {model.name} ({model.id})
+                                    {model.id === NONE_OPTION_ID
+                                      ? // For the "None" option, don't show provider prefix
+                                        `${model.name}`
+                                      : // For all other models, show provider prefix
+                                        `${
+                                          PROVIDER_INFO[model.provider].name
+                                        }: ${model.name} (${model.id})`}
                                   </MenuItem>
                                 ))
                               )}
