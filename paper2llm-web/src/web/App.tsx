@@ -417,23 +417,14 @@ const App: React.FC = () => {
                 <Typography variant="body1" sx={{ mb: 1 }}>
                   <code>paper2llm</code> uses{" "}
                   <a
-                    href="https://mistral.ai/en"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{ color: theme.palette.primary.main }}
-                  >
-                    Mistral AI
-                  </a>
-                  's{" "}
-                  <a
                     href="https://mistral.ai/en/news/mistral-ocr"
                     target="_blank"
                     rel="noopener noreferrer"
                     style={{ color: theme.palette.primary.main }}
                   >
-                    OCR
+                    Mistral OCR
                   </a>{" "}
-                  and vision models to convert a PDF and its figures to a
+                  and other vision models to convert a PDF and its figures to a
                   text-only file.
                 </Typography>
                 <Typography variant="body1">
@@ -444,9 +435,9 @@ const App: React.FC = () => {
                     rel="noopener noreferrer"
                     style={{ color: theme.palette.primary.main }}
                   >
-                    a Mistral API key
+                    your Mistral AI API key
                   </a>{" "}
-                  above.{" "}
+                  and other API keys above.{" "}
                   <Tooltip title="Mistral AI's free API tier (with usage limits) is compatible with paper2llm. OCR processing requires a Mistral API key, while image description can use either Mistral or OpenAI. We have no affiliation with either provider.">
                     <InfoIcon
                       fontSize="small"
@@ -458,18 +449,6 @@ const App: React.FC = () => {
                       }}
                     />
                   </Tooltip>
-                </Typography>
-                <Typography variant="body1">
-                  You can also add an{" "}
-                  <a
-                    href="https://platform.openai.com/api-keys"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{ color: theme.palette.primary.main }}
-                  >
-                    OpenAI API key
-                  </a>{" "}
-                  for alternative image description models.
                 </Typography>
               </Paper>
             )}
