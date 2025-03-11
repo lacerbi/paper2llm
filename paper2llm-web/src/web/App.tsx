@@ -220,6 +220,7 @@ const App: React.FC = () => {
       const result = await pdfToMdService.convertPdfToMarkdown(
         pdfFile,
         apiKeys.mistral, // Always use Mistral key for OCR
+        apiKeys[modelProvider], // Provider-specific key for vision
         { includeImageBase64: true },
         {
           addPageNumbers: true,

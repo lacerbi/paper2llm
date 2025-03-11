@@ -19,7 +19,8 @@ export class PdfToMdService {
    */
   public async convertPdfToMarkdown(
     file: PdfFile,
-    apiKey: string,
+    ocrApiKey: string,
+    visionApiKey: string,
     ocrOptions: OcrOptions = {},
     markdownOptions: MarkdownOptions = {},
     progressReporter?: ProgressReporter,
@@ -38,7 +39,7 @@ export class PdfToMdService {
       
       const ocrResult = await mistralOcrService.processPdf(
         file,
-        apiKey,
+        ocrApiKey,
         ocrOptions,
         progressReporter
       );
@@ -81,7 +82,7 @@ export class PdfToMdService {
           // Process all images to get descriptions
           const imageDescriptions = await multiProviderImageService.describeImages(
             allImages,
-            apiKey,
+            visionApiKey,
             visionProvider,
             contextMap,
             progressReporter,
