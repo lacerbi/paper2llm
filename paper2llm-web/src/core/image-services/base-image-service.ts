@@ -1,6 +1,7 @@
 // AI Summary: Abstract base class for vision API implementations.
 // Defines common functionality and error handling for image description services.
 // Enforces consistent provider interface implementation across different vision APIs.
+// Includes automatic retry mechanism with specialized handling for rate limit errors.
 
 import axios, { AxiosInstance } from "axios";
 import {
@@ -38,8 +39,9 @@ export abstract class BaseImageService implements ImageService {
   protected readonly DEFAULT_FAST_MODEL_TOKENS: number = 3000;  // Higher token limit for fast/cheaper models
   protected readonly DEFAULT_PREMIUM_MODEL_TOKENS: number = 1200; // Lower token limit for premium/expensive models
   
-  protected maxRetries: number = 2;
+  protected maxRetries: number = 3;
   protected retryDelay: number = 1000; // 1 second
+  protected readonly RATE_LIMIT_RETRY_DELAY: number = 20000; // 20 seconds
   protected abortController: AbortController | null = null;
   
   /**
@@ -297,6 +299,24 @@ export abstract class BaseImageService implements ImageService {
    * Get the default model for a specific provider
    */
   abstract getDefaultModel(provider: ApiProvider): string;
+
+  /**
+   * Determines the appropriate retry delay based on error type
+   * Uses longer delays for rate limit errors, shorter delays for other retryable errors
+   * 
+   * @param errorType The type of error that occurred
+   * @param retryCount Current retry attempt number (0-based)
+   * @returns Delay in milliseconds to wait before next retry
+   */
+  protected getRetryDelay(errorType: string, retryCount: number): number {
+    // Use longer delay for rate limit errors
+    if (errorType === 'rate_limit') {
+      return this.RATE_LIMIT_RETRY_DELAY;
+    }
+    
+    // For other errors, use incrementally longer delays
+    return this.retryDelay * (retryCount + 1);
+  }
 
   /**
    * Cancels an ongoing operation if possible

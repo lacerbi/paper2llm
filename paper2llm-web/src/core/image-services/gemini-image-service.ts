@@ -213,7 +213,7 @@ export class GeminiImageService extends BaseImageService {
           if (statusCode === 429) {
             const retryable = retryCount < this.maxRetries;
             throw new ImageProcessingError(
-              "Gemini API rate limit exceeded. Please try again later.",
+              `Gemini API rate limit exceeded. ${retryable ? 'Will retry after cooling period.' : 'Maximum retries reached.'}`,
               "rate_limit",
               retryable
             );
@@ -300,15 +300,20 @@ export class GeminiImageService extends BaseImageService {
 
       // Handle retryable errors
       if (error instanceof ImageProcessingError && error.retryable) {
+        const isRateLimit = error.type === 'rate_limit';
+        const delay = this.getRetryDelay(error.type, retryCount);
+        
         console.log(
           `Retrying image ${image.id} description (attempt ${
             retryCount + 1
-          } of ${this.maxRetries})`
+          } of ${this.maxRetries})${
+            isRateLimit ? ' - Rate limit exceeded, waiting longer before retry' : ''
+          }`
         );
-        // Wait before retry
-        await new Promise((resolve) =>
-          setTimeout(resolve, this.retryDelay * (retryCount + 1))
-        );
+        
+        // Wait before retry with appropriate delay
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        
         return this.describeImage(
           image,
           apiKey,
