@@ -1,5 +1,5 @@
-// AI Summary: Mistral AI-specific implementation of the image description service.
-// Handles API communication with Mistral's Pixtral models for image analysis.
+// AI Summary: Gemini-specific implementation of the image description service.
+// Handles API communication with Google's Gemini vision models for image analysis.
 // Includes model validation, error handling, and response processing.
 
 import axios, { AxiosInstance, AxiosResponse } from "axios";
@@ -8,27 +8,44 @@ import { formatImagePrompt } from "../templates/image-prompt-template";
 import { BaseImageService, ImageProcessingError } from "./base-image-service";
 
 /**
- * MistralImageService implements image description using Mistral's Vision API (pixtral models)
+ * GeminiImageService implements image description using Google's Gemini Vision API
  */
-export class MistralImageService extends BaseImageService {
+export class GeminiImageService extends BaseImageService {
   private readonly apiBaseUrl: string =
-    "https://api.mistral.ai/v1/chat/completions";
+    "https://generativelanguage.googleapis.com/v1beta/models";
   private axiosInstance: AxiosInstance;
 
-  // Available Mistral Vision models
+  // Available Gemini Vision models
   private readonly modelInfos: VisionModelInfo[] = [
     {
-      id: "pixtral-12b-2409",
-      name: "Pixtral",
-      description: "Standard vision model for most use cases",
-      provider: "mistral",
+      id: "gemini-2.0-flash",
+      name: "Gemini 2.0 Flash",
+      description:
+        "Fast and efficient vision model for general-purpose image understanding",
+      provider: "gemini",
       maxTokens: this.DEFAULT_FAST_MODEL_TOKENS,
     },
     {
-      id: "pixtral-large-latest",
-      name: "Pixtral Large",
-      description: "Enhanced vision model with higher detail capability",
-      provider: "mistral",
+      id: "gemini-2.0-flash-lite",
+      name: "Gemini 2.0 Flash Lite",
+      description:
+        "Lightweight version optimized for speed and lower resource usage",
+      provider: "gemini",
+      maxTokens: this.DEFAULT_FAST_MODEL_TOKENS,
+    },
+    {
+      id: "gemini-2.0-flash-thinking-exp",
+      name: "Gemini 2.0 Flash Thinking",
+      description: "Experimental model with enhanced reasoning capabilities",
+      provider: "gemini",
+      maxTokens: this.DEFAULT_FAST_MODEL_TOKENS,
+    },
+    {
+      id: "gemini-2.0-pro-exp",
+      name: "Gemini 2.0 Pro",
+      description:
+        "Advanced vision model with high-quality image understanding",
+      provider: "gemini",
       maxTokens: this.DEFAULT_PREMIUM_MODEL_TOKENS,
     },
   ];
@@ -39,43 +56,50 @@ export class MistralImageService extends BaseImageService {
   }
 
   /**
-   * Returns the available Mistral vision models
+   * Returns the available Gemini vision models
    */
   getAvailableModels(provider: ApiProvider): VisionModelInfo[] {
-    if (provider !== "mistral") {
+    if (provider !== "gemini") {
       return [];
     }
     return this.modelInfos;
   }
 
   /**
-   * Returns the default Mistral vision model
+   * Returns the default Gemini vision model
    */
   getDefaultModel(provider: ApiProvider): string {
-    if (provider !== "mistral") {
+    if (provider !== "gemini") {
       return "";
     }
-    return "pixtral-12b-2409";
+    return "gemini-2.0-flash"; // Use flash as the default model
   }
 
   /**
-   * Properly formats image data for the Mistral Vision API
-   * Ensures the base64 prefix is included correctly without duplication
+   * Builds a prompt for the Vision API based on the context
+   * Uses the standardized template from image-prompt-template.ts
+   */
+  protected buildImagePrompt(contextText?: string, provider?: ApiProvider): string {
+    return formatImagePrompt(contextText);
+  }
+
+  /**
+   * Properly formats image data for the Gemini Vision API
    */
   protected formatImageUrl(base64Data: string, provider: ApiProvider): string {
-    // Only handle Mistral formatting
-    if (provider !== "mistral") {
+    // Only handle Gemini formatting
+    if (provider !== "gemini") {
       return base64Data;
     }
 
-    // Check if the base64 data already includes the data URI prefix
+    // For Gemini, we need to strip any data URI prefix if present
     if (base64Data.startsWith("data:image/")) {
-      // Already has proper format, return as is
-      return base64Data;
+      // Extract only the base64 content without the prefix
+      const base64Content = base64Data.split(",")[1];
+      return base64Content;
     }
 
-    // Add the proper prefix for JPEG images
-    return `data:image/jpeg;base64,${base64Data}`;
+    return base64Data;
   }
 
   /**
@@ -85,7 +109,7 @@ export class MistralImageService extends BaseImageService {
     model: string | undefined,
     provider: ApiProvider
   ): string {
-    if (provider !== "mistral") {
+    if (provider !== "gemini") {
       return "";
     }
 
@@ -101,15 +125,7 @@ export class MistralImageService extends BaseImageService {
   }
 
   /**
-   * Builds a prompt for the Vision API based on the context
-   * Uses the template from image-prompt-template.ts
-   */
-  protected buildImagePrompt(contextText?: string): string {
-    return formatImagePrompt(contextText);
-  }
-
-  /**
-   * Describes an image using Mistral's Vision API
+   * Describes an image using Gemini's Vision API
    */
   async describeImage(
     image: OcrImage,
@@ -119,8 +135,8 @@ export class MistralImageService extends BaseImageService {
     model?: string,
     retryCount: number = 0
   ): Promise<string> {
-    // Only process requests for Mistral provider
-    if (provider !== "mistral") {
+    // Only process requests for Gemini provider
+    if (provider !== "gemini") {
       throw new ImageProcessingError(
         "Provider not supported by this service implementation",
         "provider_error",
@@ -138,8 +154,8 @@ export class MistralImageService extends BaseImageService {
       // Build the prompt for the image description
       const promptText = this.buildImagePrompt(contextText);
 
-      // Prepare the image URL with base64 data, ensuring proper formatting
-      const imageUrl = this.formatImageUrl(image.base64, provider);
+      // Prepare the image data, ensuring proper formatting
+      const base64Image = this.formatImageUrl(image.base64, provider);
 
       // Validate model if provided, otherwise use default
       const selectedModel = this.validateModel(model, provider);
@@ -148,31 +164,37 @@ export class MistralImageService extends BaseImageService {
       const modelInfo = this.modelInfos.find((m) => m.id === selectedModel);
       const maxTokens = modelInfo?.maxTokens || this.DEFAULT_PREMIUM_MODEL_TOKENS;
 
-      // Create the request payload
+      // Create the request URL - Gemini requires model in URL
+      const requestUrl = `/${selectedModel}:generateContent?key=${apiKey}`;
+
+      // Create the request payload - structure specific to Gemini
       const payload = {
-        model: selectedModel,
-        messages: [
+        contents: [
           {
-            role: "user",
-            content: [
+            parts: [
               {
-                type: "text",
                 text: promptText,
               },
               {
-                type: "image_url",
-                image_url: imageUrl,
+                inlineData: {
+                  mimeType: "image/jpeg",
+                  data: base64Image,
+                },
               },
             ],
           },
         ],
-        max_tokens: maxTokens,
+        generationConfig: {
+          maxOutputTokens: maxTokens,
+          temperature: 0.4,
+          topP: 0.95,
+        },
       };
 
       // Set up request configuration with abort signal
       const config = {
         headers: {
-          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
         },
         signal: this.abortController.signal,
       };
@@ -180,31 +202,18 @@ export class MistralImageService extends BaseImageService {
       // Make the API request
       let response: AxiosResponse<any>;
       try {
-        response = await this.axiosInstance.post("", payload, config);
+        response = await this.axiosInstance.post(requestUrl, payload, config);
       } catch (apiError: any) {
         // Handle specific API errors
         if (apiError.response) {
           const statusCode = apiError.response.status;
           const errorData = apiError.response.data?.error;
 
-          // Check for specific error related to image formatting
-          if (statusCode === 422) {
-            const errorMessage = errorData?.message || "Unknown API error";
-            console.error(
-              `Vision API rejected request with 422 error: ${errorMessage}`
-            );
-            throw new ImageProcessingError(
-              `Image format error: ${errorMessage}`,
-              "format_error",
-              false
-            );
-          }
-
           // Handle rate limiting
           if (statusCode === 429) {
             const retryable = retryCount < this.maxRetries;
             throw new ImageProcessingError(
-              `Mistral API rate limit exceeded. ${retryable ? 'Will retry after cooling period.' : 'Maximum retries reached.'}`,
+              `Gemini API rate limit exceeded. ${retryable ? 'Will retry after cooling period.' : 'Maximum retries reached.'}`,
               "rate_limit",
               retryable
             );
@@ -213,7 +222,7 @@ export class MistralImageService extends BaseImageService {
           // Handle authentication errors
           if (statusCode === 401 || statusCode === 403) {
             throw new ImageProcessingError(
-              "Invalid or unauthorized API key",
+              "Invalid or unauthorized Gemini API key",
               "auth_error",
               false
             );
@@ -223,7 +232,7 @@ export class MistralImageService extends BaseImageService {
           if (statusCode >= 500) {
             const retryable = retryCount < this.maxRetries;
             throw new ImageProcessingError(
-              `Vision API server error (${statusCode})`,
+              `Gemini API server error (${statusCode})`,
               "server_error",
               retryable
             );
@@ -231,7 +240,7 @@ export class MistralImageService extends BaseImageService {
 
           // Handle other API errors
           throw new ImageProcessingError(
-            `Vision API error (${statusCode}): ${JSON.stringify(errorData)}`,
+            `Gemini API error (${statusCode}): ${JSON.stringify(errorData)}`,
             "api_error",
             false
           );
@@ -241,7 +250,7 @@ export class MistralImageService extends BaseImageService {
         if (apiError.code === "ECONNABORTED" || apiError.code === "ETIMEDOUT") {
           const retryable = retryCount < this.maxRetries;
           throw new ImageProcessingError(
-            `Network timeout while contacting Vision API: ${apiError.message}`,
+            `Network timeout while contacting Gemini API: ${apiError.message}`,
             "timeout",
             retryable
           );
@@ -255,18 +264,26 @@ export class MistralImageService extends BaseImageService {
       }
 
       // Extract and return the description from the response
+      // Gemini response structure is different from OpenAI/Mistral
       if (
         response.data &&
-        response.data.choices &&
-        response.data.choices.length > 0 &&
-        response.data.choices[0].message &&
-        response.data.choices[0].message.content
+        response.data.candidates &&
+        response.data.candidates.length > 0 &&
+        response.data.candidates[0].content &&
+        response.data.candidates[0].content.parts &&
+        response.data.candidates[0].content.parts.length > 0
       ) {
-        const rawDescription = response.data.choices[0].message.content.trim();
+        // Extract text from the response - Gemini returns parts array
+        let textParts = response.data.candidates[0].content.parts
+          .filter((part: any) => part.text)
+          .map((part: any) => part.text)
+          .join("\n");
+
+        const rawDescription = textParts.trim();
         return this.processDescriptionResponse(rawDescription, image.id, retryCount);
       } else {
         throw new ImageProcessingError(
-          "Invalid response format from Vision API",
+          "Invalid response format from Gemini API",
           "response_format",
           retryCount < this.maxRetries
         );

@@ -5,6 +5,7 @@
 import { ApiProvider, ImageService, VisionModelInfo } from "../../types/interfaces";
 import { MistralImageService } from "./mistral-image-service";
 import { OpenAIImageService } from "./openai-image-service";
+import { GeminiImageService } from "./gemini-image-service";
 
 /**
 * Factory for creating provider-specific image service instances
@@ -13,10 +14,12 @@ export class ImageServiceFactory {
  private static instance: ImageServiceFactory;
  private mistralService: MistralImageService;
  private openaiService: OpenAIImageService;
+ private geminiService: GeminiImageService;
 
  private constructor() {
    this.mistralService = new MistralImageService();
    this.openaiService = new OpenAIImageService();
+   this.geminiService = new GeminiImageService();
  }
 
  /**
@@ -38,6 +41,8 @@ export class ImageServiceFactory {
        return this.mistralService;
      case 'openai':
        return this.openaiService;
+     case 'gemini':
+       return this.geminiService;
      default:
        throw new Error(`Unsupported provider: ${provider}`);
    }
@@ -83,7 +88,8 @@ export class ImageServiceFactory {
    // If no provider specified, return models from all providers
    return [
      ...this.mistralService.getAvailableModels('mistral'),
-     ...this.openaiService.getAvailableModels('openai')
+     ...this.openaiService.getAvailableModels('openai'),
+     ...this.geminiService.getAvailableModels('gemini')
    ];
  }
 
@@ -100,6 +106,7 @@ export class ImageServiceFactory {
  public cancelOperation(): void {
    this.mistralService.cancelOperation();
    this.openaiService.cancelOperation();
+   this.geminiService.cancelOperation();
  }
 }
 

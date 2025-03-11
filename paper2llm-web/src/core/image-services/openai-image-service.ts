@@ -4,6 +4,7 @@
 
 import axios, { AxiosInstance, AxiosResponse } from "axios";
 import { ApiProvider, OcrImage, VisionModelInfo } from "../../types/interfaces";
+import { formatImagePrompt } from "../templates/image-prompt-template";
 import { BaseImageService, ImageProcessingError } from "./base-image-service";
 
 /**
@@ -21,7 +22,7 @@ export class OpenAIImageService extends BaseImageService {
       name: "GPT-4o",
       description: "Latest vision model with high-quality image understanding",
       provider: "openai",
-      maxTokens: 1000,
+      maxTokens: this.DEFAULT_PREMIUM_MODEL_TOKENS,
     },
   ];
 
@@ -52,17 +53,10 @@ export class OpenAIImageService extends BaseImageService {
 
   /**
    * Builds a prompt for the Vision API based on the context
+   * Uses the standardized template from image-prompt-template.ts
    */
-  protected buildImagePrompt(contextText?: string): string {
-    // OpenAI vision prompt template
-    const basePrompt =
-      "Please describe this image in detail. Focus on key elements, text content, layouts, and figures.";
-
-    if (!contextText) {
-      return basePrompt;
-    }
-
-    return `${basePrompt}\n\nAdditional context: ${contextText}`;
+  protected buildImagePrompt(contextText?: string, provider?: ApiProvider): string {
+    return formatImagePrompt(contextText);
   }
 
   /**
@@ -144,7 +138,7 @@ export class OpenAIImageService extends BaseImageService {
 
       // Find the model info to get max tokens
       const modelInfo = this.modelInfos.find((m) => m.id === selectedModel);
-      const maxTokens = modelInfo?.maxTokens || 800;
+      const maxTokens = modelInfo?.maxTokens || this.DEFAULT_PREMIUM_MODEL_TOKENS;
 
       // Create the request payload
       const payload = {
@@ -192,7 +186,7 @@ export class OpenAIImageService extends BaseImageService {
           if (statusCode === 429) {
             const retryable = retryCount < this.maxRetries;
             throw new ImageProcessingError(
-              "OpenAI API rate limit exceeded. Please try again later.",
+              `OpenAI API rate limit exceeded. ${retryable ? 'Will retry after cooling period.' : 'Maximum retries reached.'}`,
               "rate_limit",
               retryable
             );
@@ -250,7 +244,8 @@ export class OpenAIImageService extends BaseImageService {
         response.data.choices[0].message &&
         response.data.choices[0].message.content
       ) {
-        return response.data.choices[0].message.content.trim();
+        const rawDescription = response.data.choices[0].message.content.trim();
+        return this.processDescriptionResponse(rawDescription, image.id, retryCount);
       } else {
         throw new ImageProcessingError(
           "Invalid response format from OpenAI API",
@@ -270,15 +265,20 @@ export class OpenAIImageService extends BaseImageService {
 
       // Handle retryable errors
       if (error instanceof ImageProcessingError && error.retryable) {
+        const isRateLimit = error.type === 'rate_limit';
+        const delay = this.getRetryDelay(error.type, retryCount);
+        
         console.log(
           `Retrying image ${image.id} description (attempt ${
             retryCount + 1
-          } of ${this.maxRetries})`
+          } of ${this.maxRetries})${
+            isRateLimit ? ' - Rate limit exceeded, waiting longer before retry' : ''
+          }`
         );
-        // Wait before retry
-        await new Promise((resolve) =>
-          setTimeout(resolve, this.retryDelay * (retryCount + 1))
-        );
+        
+        // Wait before retry with appropriate delay
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        
         return this.describeImage(
           image,
           apiKey,

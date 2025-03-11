@@ -1,6 +1,7 @@
 // AI Summary: Abstract base class for vision API implementations.
 // Defines common functionality and error handling for image description services.
 // Enforces consistent provider interface implementation across different vision APIs.
+// Includes automatic retry mechanism with specialized handling for rate limit errors.
 
 import axios, { AxiosInstance } from "axios";
 import {
@@ -10,6 +11,7 @@ import {
   ProgressReporter,
   VisionModelInfo
 } from "../../types/interfaces";
+import { extractDescriptionFromTags } from "../templates/image-prompt-template";
 
 /**
  * Custom error types for image processing failures
@@ -17,12 +19,14 @@ import {
 export class ImageProcessingError extends Error {
   type: string;
   retryable: boolean;
+  rawResponse?: string;
 
-  constructor(message: string, type: string, retryable: boolean = false) {
+  constructor(message: string, type: string, retryable: boolean = false, rawResponse?: string) {
     super(message);
     this.name = "ImageProcessingError";
     this.type = type;
     this.retryable = retryable;
+    this.rawResponse = rawResponse;
   }
 }
 
@@ -31,8 +35,13 @@ export class ImageProcessingError extends Error {
  * Provides common functionality and enforces consistent interface
  */
 export abstract class BaseImageService implements ImageService {
-  protected maxRetries: number = 2;
+  // Standard token limits based on model type
+  protected readonly DEFAULT_FAST_MODEL_TOKENS: number = 3000;  // Higher token limit for fast/cheaper models
+  protected readonly DEFAULT_PREMIUM_MODEL_TOKENS: number = 1200; // Lower token limit for premium/expensive models
+  
+  protected maxRetries: number = 3;
   protected retryDelay: number = 1000; // 1 second
+  protected readonly RATE_LIMIT_RETRY_DELAY: number = 20000; // 20 seconds
   protected abortController: AbortController | null = null;
   
   /**
@@ -221,6 +230,8 @@ export abstract class BaseImageService implements ImageService {
 
   /**
    * Build a prompt for the Vision API based on the context and provider
+   * Implementations should use formatImagePrompt from the template file
+   * to ensure consistent XML tag handling across providers
    */
   protected abstract buildImagePrompt(contextText?: string, provider?: ApiProvider): string;
 
@@ -247,6 +258,39 @@ export abstract class BaseImageService implements ImageService {
   ): Promise<string>;
 
   /**
+   * Process a raw description response to extract content from XML tags
+   * @param rawDescription The raw response from the vision API
+   * @param imageId Optional image ID for better error reporting
+   * @param retryCount Current retry count
+   * @returns The processed description
+   * @throws ImageProcessingError if the description lacks required XML tags
+   */
+  protected processDescriptionResponse(
+    rawDescription: string, 
+    imageId?: string, 
+    retryCount: number = 0
+  ): string {
+    if (!rawDescription) {
+      return "";
+    }
+
+    // Process the response through XML tag extraction
+    const extractedDescription = extractDescriptionFromTags(rawDescription);
+    if (extractedDescription) {
+      return extractedDescription;
+    } else {
+      const idInfo = imageId ? ` for image ${imageId}` : '';
+      console.warn(`Description${idInfo} missing required XML tags: ${rawDescription.substring(0, 100)}...`);
+      throw new ImageProcessingError(
+        "Image description format invalid: missing required XML tags. Raw response preserved for debugging.",
+        "response_format_missing_tags",
+        retryCount < this.maxRetries,
+        rawDescription
+      );
+    }
+  }
+
+  /**
    * Get available models for a specific provider
    */
   abstract getAvailableModels(provider: ApiProvider): VisionModelInfo[];
@@ -255,6 +299,24 @@ export abstract class BaseImageService implements ImageService {
    * Get the default model for a specific provider
    */
   abstract getDefaultModel(provider: ApiProvider): string;
+
+  /**
+   * Determines the appropriate retry delay based on error type
+   * Uses longer delays for rate limit errors, shorter delays for other retryable errors
+   * 
+   * @param errorType The type of error that occurred
+   * @param retryCount Current retry attempt number (0-based)
+   * @returns Delay in milliseconds to wait before next retry
+   */
+  protected getRetryDelay(errorType: string, retryCount: number): number {
+    // Use longer delay for rate limit errors
+    if (errorType === 'rate_limit') {
+      return this.RATE_LIMIT_RETRY_DELAY;
+    }
+    
+    // For other errors, use incrementally longer delays
+    return this.retryDelay * (retryCount + 1);
+  }
 
   /**
    * Cancels an ongoing operation if possible

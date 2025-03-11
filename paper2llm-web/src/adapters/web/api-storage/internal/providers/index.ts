@@ -7,7 +7,7 @@
  * 
  * This module exports all components related to the provider system:
  * - BaseProvider: Abstract base class for provider implementations
- * - Provider implementations: MistralProvider, OpenAIProvider
+ * - Provider implementations: MistralProvider, OpenAIProvider, GeminiProvider
  * - Utility functions for working with providers
  * 
  * The provider system allows for easy extension with new API providers
@@ -17,12 +17,14 @@
 // Import provider implementations for use in factory function
 import { MistralProvider } from './mistral-provider';
 import { OpenAIProvider } from './openai-provider';
+import { GeminiProvider } from './gemini-provider';
 import { BaseProvider } from './base-provider';
 
 // Export base provider class and implementations
 export { BaseProvider } from './base-provider';
 export { MistralProvider } from './mistral-provider';
 export { OpenAIProvider } from './openai-provider';
+export { GeminiProvider } from './gemini-provider';
 
 // Export utility functions and factory
 
@@ -38,6 +40,7 @@ export { OpenAIProvider } from './openai-provider';
 export function createDefaultProviders() {
   const mistralProvider = new MistralProvider();
   const openaiProvider = new OpenAIProvider();
+  const geminiProvider = new GeminiProvider();
   
-  return [mistralProvider, openaiProvider];
+  return [mistralProvider, openaiProvider, geminiProvider];
 }
