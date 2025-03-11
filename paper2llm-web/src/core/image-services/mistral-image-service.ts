@@ -3,11 +3,7 @@
 // Includes model validation, error handling, and response processing.
 
 import axios, { AxiosInstance, AxiosResponse } from "axios";
-import {
-  ApiProvider,
-  OcrImage,
-  VisionModelInfo
-} from "../../types/interfaces";
+import { ApiProvider, OcrImage, VisionModelInfo } from "../../types/interfaces";
 import { formatImagePrompt } from "../templates/image-prompt-template";
 import { BaseImageService, ImageProcessingError } from "./base-image-service";
 
@@ -15,9 +11,10 @@ import { BaseImageService, ImageProcessingError } from "./base-image-service";
  * MistralImageService implements image description using Mistral's Vision API (pixtral models)
  */
 export class MistralImageService extends BaseImageService {
-  private readonly apiBaseUrl: string = "https://api.mistral.ai/v1/chat/completions";
+  private readonly apiBaseUrl: string =
+    "https://api.mistral.ai/v1/chat/completions";
   private axiosInstance: AxiosInstance;
-  
+
   // Available Mistral Vision models
   private readonly modelInfos: VisionModelInfo[] = [
     {
@@ -25,15 +22,15 @@ export class MistralImageService extends BaseImageService {
       name: "Pixtral",
       description: "Standard vision model for most use cases",
       provider: "mistral",
-      maxTokens: 500
+      maxTokens: this.DEFAULT_FAST_MODEL_TOKENS,
     },
     {
       id: "pixtral-large-latest",
       name: "Pixtral Large",
       description: "Enhanced vision model with higher detail capability",
       provider: "mistral",
-      maxTokens: 1000
-    }
+      maxTokens: this.DEFAULT_PREMIUM_MODEL_TOKENS,
+    },
   ];
 
   constructor() {
@@ -45,7 +42,7 @@ export class MistralImageService extends BaseImageService {
    * Returns the available Mistral vision models
    */
   getAvailableModels(provider: ApiProvider): VisionModelInfo[] {
-    if (provider !== 'mistral') {
+    if (provider !== "mistral") {
       return [];
     }
     return this.modelInfos;
@@ -55,7 +52,7 @@ export class MistralImageService extends BaseImageService {
    * Returns the default Mistral vision model
    */
   getDefaultModel(provider: ApiProvider): string {
-    if (provider !== 'mistral') {
+    if (provider !== "mistral") {
       return "";
     }
     return "pixtral-12b-2409";
@@ -67,10 +64,10 @@ export class MistralImageService extends BaseImageService {
    */
   protected formatImageUrl(base64Data: string, provider: ApiProvider): string {
     // Only handle Mistral formatting
-    if (provider !== 'mistral') {
+    if (provider !== "mistral") {
       return base64Data;
     }
-    
+
     // Check if the base64 data already includes the data URI prefix
     if (base64Data.startsWith("data:image/")) {
       // Already has proper format, return as is
@@ -84,19 +81,22 @@ export class MistralImageService extends BaseImageService {
   /**
    * Validates the provided model name or falls back to default
    */
-  protected validateModel(model: string | undefined, provider: ApiProvider): string {
-    if (provider !== 'mistral') {
+  protected validateModel(
+    model: string | undefined,
+    provider: ApiProvider
+  ): string {
+    if (provider !== "mistral") {
       return "";
     }
-    
+
     // Get valid model IDs
-    const validModelIds = this.modelInfos.map(m => m.id);
-    
+    const validModelIds = this.modelInfos.map((m) => m.id);
+
     // If no model provided or provided model is not in the list of available models, use default
     if (!model || !validModelIds.includes(model)) {
       return this.getDefaultModel(provider);
     }
-    
+
     return model;
   }
 
@@ -120,14 +120,14 @@ export class MistralImageService extends BaseImageService {
     retryCount: number = 0
   ): Promise<string> {
     // Only process requests for Mistral provider
-    if (provider !== 'mistral') {
+    if (provider !== "mistral") {
       throw new ImageProcessingError(
         "Provider not supported by this service implementation",
         "provider_error",
         false
       );
     }
-    
+
     try {
       // Validate input parameters
       this.validateImageParameters(image, apiKey);
@@ -143,7 +143,11 @@ export class MistralImageService extends BaseImageService {
 
       // Validate model if provided, otherwise use default
       const selectedModel = this.validateModel(model, provider);
-      
+
+      // Find the model info to get max tokens
+      const modelInfo = this.modelInfos.find((m) => m.id === selectedModel);
+      const maxTokens = modelInfo?.maxTokens || this.DEFAULT_PREMIUM_MODEL_TOKENS;
+
       // Create the request payload
       const payload = {
         model: selectedModel,
@@ -162,7 +166,7 @@ export class MistralImageService extends BaseImageService {
             ],
           },
         ],
-        max_tokens: 500,
+        max_tokens: maxTokens,
       };
 
       // Set up request configuration with abort signal
@@ -287,7 +291,14 @@ export class MistralImageService extends BaseImageService {
         await new Promise((resolve) =>
           setTimeout(resolve, this.retryDelay * (retryCount + 1))
         );
-        return this.describeImage(image, apiKey, provider, contextText, model, retryCount + 1);
+        return this.describeImage(
+          image,
+          apiKey,
+          provider,
+          contextText,
+          model,
+          retryCount + 1
+        );
       }
 
       // Re-throw any other errors

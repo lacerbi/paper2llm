@@ -31,6 +31,10 @@ export class ImageProcessingError extends Error {
  * Provides common functionality and enforces consistent interface
  */
 export abstract class BaseImageService implements ImageService {
+  // Standard token limits based on model type
+  protected readonly DEFAULT_FAST_MODEL_TOKENS: number = 3000;  // Higher token limit for fast/cheaper models
+  protected readonly DEFAULT_PREMIUM_MODEL_TOKENS: number = 1200; // Lower token limit for premium/expensive models
+  
   protected maxRetries: number = 2;
   protected retryDelay: number = 1000; // 1 second
   protected abortController: AbortController | null = null;

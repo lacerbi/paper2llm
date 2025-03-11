@@ -21,7 +21,7 @@ export class OpenAIImageService extends BaseImageService {
       name: "GPT-4o",
       description: "Latest vision model with high-quality image understanding",
       provider: "openai",
-      maxTokens: 1000,
+      maxTokens: this.DEFAULT_PREMIUM_MODEL_TOKENS,
     },
   ];
 
@@ -144,7 +144,7 @@ export class OpenAIImageService extends BaseImageService {
 
       // Find the model info to get max tokens
       const modelInfo = this.modelInfos.find((m) => m.id === selectedModel);
-      const maxTokens = modelInfo?.maxTokens || 800;
+      const maxTokens = modelInfo?.maxTokens || this.DEFAULT_PREMIUM_MODEL_TOKENS;
 
       // Create the request payload
       const payload = {

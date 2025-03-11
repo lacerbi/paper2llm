@@ -19,30 +19,33 @@ export class GeminiImageService extends BaseImageService {
     {
       id: "gemini-2.0-flash",
       name: "Gemini 2.0 Flash",
-      description: "Fast and efficient vision model for general-purpose image understanding",
+      description:
+        "Fast and efficient vision model for general-purpose image understanding",
       provider: "gemini",
-      maxTokens: 800,
+      maxTokens: this.DEFAULT_FAST_MODEL_TOKENS,
     },
     {
       id: "gemini-2.0-flash-lite",
       name: "Gemini 2.0 Flash Lite",
-      description: "Lightweight version optimized for speed and lower resource usage",
+      description:
+        "Lightweight version optimized for speed and lower resource usage",
       provider: "gemini",
-      maxTokens: 600,
+      maxTokens: this.DEFAULT_FAST_MODEL_TOKENS,
     },
     {
       id: "gemini-2.0-flash-thinking-exp",
       name: "Gemini 2.0 Flash Thinking",
       description: "Experimental model with enhanced reasoning capabilities",
       provider: "gemini",
-      maxTokens: 1000,
+      maxTokens: this.DEFAULT_FAST_MODEL_TOKENS,
     },
     {
       id: "gemini-2.0-pro-exp",
       name: "Gemini 2.0 Pro",
-      description: "Advanced vision model with high-quality image understanding",
+      description:
+        "Advanced vision model with high-quality image understanding",
       provider: "gemini",
-      maxTokens: 1200,
+      maxTokens: this.DEFAULT_PREMIUM_MODEL_TOKENS,
     },
   ];
 
@@ -165,7 +168,7 @@ export class GeminiImageService extends BaseImageService {
 
       // Find the model info to get max tokens
       const modelInfo = this.modelInfos.find((m) => m.id === selectedModel);
-      const maxTokens = modelInfo?.maxTokens || 800;
+      const maxTokens = modelInfo?.maxTokens || this.DEFAULT_PREMIUM_MODEL_TOKENS;
 
       // Create the request URL - Gemini requires model in URL
       const requestUrl = `/${selectedModel}:generateContent?key=${apiKey}`;
