@@ -17,7 +17,12 @@ import {
   Snackbar,
   Alert,
   IconButton,
-  useTheme
+  useTheme,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
+  Grid
 } from '@mui/material';
 import {
   ContentCopy as CopyIcon,
@@ -28,7 +33,9 @@ import {
   CalendarToday as DateIcon,
   DescriptionOutlined as MarkdownIcon,
   Code as CodeIcon,
-  AutoStories as PageIcon
+  AutoStories as PageIcon,
+  SmartToy as AIIcon,
+  Architecture as ModelIcon
 } from '@mui/icons-material';
 import { PdfToMdResult } from '../../types/interfaces';
 
@@ -293,52 +300,93 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
         variant="outlined" 
         sx={{ p: 2, mb: 3, bgcolor: 'background.default' }}
       >
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} flexWrap="wrap">
-          <Chip 
-            icon={<DocumentIcon />} 
-            label={`${sourceFile.name} (${formatFileSize(sourceFile.size)})`}
-            size="small"
-            color="default"
-            variant="outlined"
-          />
-          <Chip 
-            icon={<DateIcon />} 
-            label={`Converted: ${formatTimestamp(timestamp)}`}
-            size="small"
-            color="default"
-            variant="outlined"
-          />
-          <Chip 
-            icon={<PageIcon />} 
-            label={`Pages: ${markdownResult.pageCount}`}
-            size="small"
-            color="default"
-            variant="outlined"
-          />
-          <Chip 
-            icon={<CodeIcon />} 
-            label={`OCR Model: ${markdownResult.model}`}
-            size="small"
-            color="default"
-            variant="outlined"
-          />
-        </Stack>
-        
-        {(imageMetrics.originalImageCount > 0 || imageMetrics.describedImageCount > 0) && (
-          <Box sx={{ mt: 2 }}>
-            <Chip 
-              icon={<ImageIcon />} 
-              label={
-                imageMetrics.hasProcessedImages
-                  ? `Images: ${imageMetrics.describedImageCount}/${imageMetrics.originalImageCount} with AI descriptions`
-                  : `Images: ${imageMetrics.originalImageCount} detected (no AI descriptions)`
-              }
-              size="small"
-              color={imageMetrics.hasProcessedImages ? "info" : "default"}
-              variant="outlined"
-            />
-          </Box>
-        )}
+        <Grid container spacing={2}>
+          <Grid item xs={12} md={6}>
+            <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 'medium', color: 'text.secondary' }}>
+              Document Information
+            </Typography>
+            <List dense disablePadding>
+              <ListItem disablePadding sx={{ mb: 0.5 }}>
+                <ListItemIcon sx={{ minWidth: 36 }}>
+                  <DocumentIcon fontSize="small" color="primary" />
+                </ListItemIcon>
+                <ListItemText 
+                  primary={sourceFile.name} 
+                  secondary={`Size: ${formatFileSize(sourceFile.size)}`}
+                  primaryTypographyProps={{ variant: 'body2' }}
+                  secondaryTypographyProps={{ variant: 'caption' }}
+                />
+              </ListItem>
+              <ListItem disablePadding sx={{ mb: 0.5 }}>
+                <ListItemIcon sx={{ minWidth: 36 }}>
+                  <PageIcon fontSize="small" color="primary" />
+                </ListItemIcon>
+                <ListItemText 
+                  primary={`${markdownResult.pageCount} pages`}
+                  primaryTypographyProps={{ variant: 'body2' }}
+                />
+              </ListItem>
+              <ListItem disablePadding sx={{ mb: 0.5 }}>
+                <ListItemIcon sx={{ minWidth: 36 }}>
+                  <DateIcon fontSize="small" color="primary" />
+                </ListItemIcon>
+                <ListItemText 
+                  primary={`Converted: ${formatTimestamp(timestamp)}`}
+                  primaryTypographyProps={{ variant: 'body2' }}
+                />
+              </ListItem>
+            </List>
+          </Grid>
+          
+          <Grid item xs={12} md={6}>
+            <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 'medium', color: 'text.secondary' }}>
+              Processing Information
+            </Typography>
+            <List dense disablePadding>
+              <ListItem disablePadding sx={{ mb: 0.5 }}>
+                <ListItemIcon sx={{ minWidth: 36 }}>
+                  <CodeIcon fontSize="small" color="primary" />
+                </ListItemIcon>
+                <ListItemText 
+                  primary={`OCR Model: ${markdownResult.model}`}
+                  primaryTypographyProps={{ variant: 'body2' }}
+                />
+              </ListItem>
+              
+              {/* Image count - use the actual count from OCR result */}
+              <ListItem disablePadding sx={{ mb: 0.5 }}>
+                <ListItemIcon sx={{ minWidth: 36 }}>
+                  <ImageIcon fontSize="small" color="primary" />
+                </ListItemIcon>
+                <ListItemText 
+                  primary={`Images: ${result.ocrResult.pages.reduce((total, page) => total + page.images.length, 0)} detected`}
+                  secondary={
+                    imageMetrics.describedImageCount > 0
+                      ? `${imageMetrics.describedImageCount} images with AI descriptions`
+                      : null
+                  }
+                  primaryTypographyProps={{ variant: 'body2' }}
+                  secondaryTypographyProps={{ variant: 'caption' }}
+                />
+              </ListItem>
+              
+              {/* Vision model info - display if available in the result */}
+              {result.visionModel && (
+                <ListItem disablePadding sx={{ mb: 0.5 }}>
+                  <ListItemIcon sx={{ minWidth: 36 }}>
+                    <ModelIcon fontSize="small" color="info" />
+                  </ListItemIcon>
+                  <ListItemText 
+                    primary={`Vision Model: ${result.visionModel}`}
+                    secondary={result.visionModelProvider ? `Provider: ${result.visionModelProvider}` : null}
+                    primaryTypographyProps={{ variant: 'body2' }}
+                    secondaryTypographyProps={{ variant: 'caption' }}
+                  />
+                </ListItem>
+              )}
+            </List>
+          </Grid>
+        </Grid>
       </Paper>
       
       <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>

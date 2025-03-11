@@ -1,468 +1,98 @@
-// AI Summary: Implements Mistral Vision API integration for image description.
-// Handles sending images to Mistral's Vision API with context and processing responses.
-// Supports both individual and batch image processing with comprehensive error handling and retry logic.
+// AI Summary: Main image service interface that uses the factory pattern.
+// Delegates to provider-specific implementations through a factory.
+// Maintains backward compatibility while supporting multiple providers.
 
-import axios, { AxiosInstance, AxiosResponse } from "axios";
-import {
-  ImageService,
-  OcrImage,
-  ProgressReporter,
-  ProgressUpdate,
+import { 
+ ApiProvider, 
+ ImageService, 
+ OcrImage, 
+ ProgressReporter, 
+ VisionModelInfo 
 } from "../types/interfaces";
-import { formatImagePrompt } from "./templates/image-prompt-template";
+import { imageServiceFactory } from "./image-services/image-service-factory";
+import { ImageProcessingError } from "./image-services/base-image-service";
 
 /**
- * Custom error types for image processing failures
- */
-export class ImageProcessingError extends Error {
-  type: string;
-  retryable: boolean;
-
-  constructor(message: string, type: string, retryable: boolean = false) {
-    super(message);
-    this.name = "ImageProcessingError";
-    this.type = type;
-    this.retryable = retryable;
-  }
-}
+* Re-export the custom error class
+*/
+export { ImageProcessingError } from "./image-services/base-image-service";
 
 /**
- * MistralImageService implements the ImageService interface to describe images
- * using Mistral's Vision API (pixtral model)
- */
-export class MistralImageService implements ImageService {
-  private readonly apiBaseUrl: string =
-    "https://api.mistral.ai/v1/chat/completions";
-  private readonly defaultModel: string = "pixtral-12b-2409";
-  private readonly availableModels: string[] = ["pixtral-12b-2409", "pixtral-large-latest"];
-  private axiosInstance: AxiosInstance;
-  private abortController: AbortController | null = null;
-  private maxRetries: number = 2;
-  private retryDelay: number = 1000; // 1 second
+* MultiProviderImageService implements the ImageService interface
+* and delegates to provider-specific implementations
+*/
+export class MultiProviderImageService implements ImageService {
+ /**
+  * Describes an image using the selected provider's Vision API
+  */
+ async describeImage(
+   image: OcrImage,
+   apiKey: string,
+   provider: ApiProvider = 'mistral',
+   contextText?: string,
+   model?: string
+ ): Promise<string> {
+   return imageServiceFactory.describeImage(
+     image, 
+     apiKey, 
+     provider, 
+     contextText, 
+     model
+   );
+ }
 
-  constructor() {
-    this.axiosInstance = axios.create({
-      baseURL: this.apiBaseUrl,
-      headers: {
-        "Content-Type": "application/json",
-      },
-      timeout: 60000, // 60 second timeout
-    });
-  }
+ /**
+  * Describes multiple images in batch using the selected provider
+  */
+ async describeImages(
+   images: OcrImage[],
+   apiKey: string,
+   provider: ApiProvider = 'mistral',
+   contextMap?: Map<string, string>,
+   progressReporter?: ProgressReporter,
+   model?: string
+ ): Promise<Map<string, string>> {
+   return imageServiceFactory.describeImages(
+     images, 
+     apiKey, 
+     provider, 
+     contextMap, 
+     progressReporter, 
+     model
+   );
+ }
 
-  /**
-   * Describes an image using Mistral's Vision API
-   *
-   * @param image OcrImage object containing the image data and metadata
-   * @param apiKey Mistral API key
-   * @param contextText Optional context to include with the image
-   * @returns Promise resolving to the image description
-   */
-  async describeImage(
-    image: OcrImage,
-    apiKey: string,
-    contextText?: string,
-    model?: string,
-    retryCount: number = 0
-  ): Promise<string> {
-    try {
-      // Validate input parameters
-      this.validateImageParameters(image, apiKey);
+ /**
+  * Gets the available vision models for a provider
+  */
+ getAvailableModels(provider: ApiProvider = 'mistral'): VisionModelInfo[] {
+   return imageServiceFactory.getAvailableModels(provider);
+ }
 
-      // Create abort controller for request cancellation
-      this.abortController = new AbortController();
+ /**
+  * Gets all available models across all providers
+  */
+ getAllModels(): VisionModelInfo[] {
+   return imageServiceFactory.getAvailableModels();
+ }
 
-      // Build the prompt for the image description
-      const promptText = this.buildImagePrompt(contextText);
+ /**
+  * Gets the default vision model for a provider
+  */
+ getDefaultModel(provider: ApiProvider = 'mistral'): string {
+   return imageServiceFactory.getDefaultModel(provider);
+ }
 
-      // Prepare the image URL with base64 data, ensuring proper formatting
-      const imageUrl = this.formatImageUrl(image.base64);
-
-      // Validate model if provided, otherwise use default
-      const selectedModel = this.validateModel(model);
-      
-      // Create the request payload
-      const payload = {
-        model: selectedModel,
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: promptText,
-              },
-              {
-                type: "image_url",
-                image_url: imageUrl,
-              },
-            ],
-          },
-        ],
-        max_tokens: 500,
-      };
-
-      // Set up request configuration with abort signal
-      const config = {
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-        },
-        signal: this.abortController.signal,
-      };
-
-      // Make the API request
-      let response: AxiosResponse<any>;
-      try {
-        response = await this.axiosInstance.post("", payload, config);
-      } catch (apiError: any) {
-        // Handle specific API errors
-        if (apiError.response) {
-          const statusCode = apiError.response.status;
-          const errorData = apiError.response.data?.error;
-
-          // Check for specific error related to image formatting
-          if (statusCode === 422) {
-            const errorMessage = errorData?.message || "Unknown API error";
-            console.error(
-              `Vision API rejected request with 422 error: ${errorMessage}`
-            );
-            throw new ImageProcessingError(
-              `Image format error: ${errorMessage}`,
-              "format_error",
-              false
-            );
-          }
-
-          // Handle rate limiting
-          if (statusCode === 429) {
-            const retryable = retryCount < this.maxRetries;
-            throw new ImageProcessingError(
-              "Vision API rate limit exceeded. Please try again later.",
-              "rate_limit",
-              retryable
-            );
-          }
-
-          // Handle authentication errors
-          if (statusCode === 401 || statusCode === 403) {
-            throw new ImageProcessingError(
-              "Invalid or unauthorized API key",
-              "auth_error",
-              false
-            );
-          }
-
-          // Handle server errors (potentially retryable)
-          if (statusCode >= 500) {
-            const retryable = retryCount < this.maxRetries;
-            throw new ImageProcessingError(
-              `Vision API server error (${statusCode})`,
-              "server_error",
-              retryable
-            );
-          }
-
-          // Handle other API errors
-          throw new ImageProcessingError(
-            `Vision API error (${statusCode}): ${JSON.stringify(errorData)}`,
-            "api_error",
-            false
-          );
-        }
-
-        // Handle network errors (potentially retryable)
-        if (apiError.code === "ECONNABORTED" || apiError.code === "ETIMEDOUT") {
-          const retryable = retryCount < this.maxRetries;
-          throw new ImageProcessingError(
-            `Network timeout while contacting Vision API: ${apiError.message}`,
-            "timeout",
-            retryable
-          );
-        }
-
-        throw new ImageProcessingError(
-          `API request failed: ${apiError.message}`,
-          "request_error",
-          retryCount < this.maxRetries
-        );
-      }
-
-      // Extract and return the description from the response
-      if (
-        response.data &&
-        response.data.choices &&
-        response.data.choices.length > 0 &&
-        response.data.choices[0].message &&
-        response.data.choices[0].message.content
-      ) {
-        return response.data.choices[0].message.content.trim();
-      } else {
-        throw new ImageProcessingError(
-          "Invalid response format from Vision API",
-          "response_format",
-          retryCount < this.maxRetries
-        );
-      }
-    } catch (error: any) {
-      // Handle request cancellation
-      if (axios.isCancel(error)) {
-        throw new ImageProcessingError(
-          "Image description request was cancelled",
-          "cancelled",
-          false
-        );
-      }
-
-      // Handle retryable errors
-      if (error instanceof ImageProcessingError && error.retryable) {
-        console.log(
-          `Retrying image ${image.id} description (attempt ${
-            retryCount + 1
-          } of ${this.maxRetries})`
-        );
-        // Wait before retry
-        await new Promise((resolve) =>
-          setTimeout(resolve, this.retryDelay * (retryCount + 1))
-        );
-        return this.describeImage(image, apiKey, contextText, model, retryCount + 1);
-      }
-
-      // Re-throw any other errors
-      throw error;
-    } finally {
-      this.abortController = null;
-    }
-  }
-
-  /**
-   * Properly formats image data for the Mistral Vision API
-   * Ensures the base64 prefix is included correctly without duplication
-   *
-   * @param base64Data Base64 encoded image data
-   * @returns Properly formatted image URL string
-   */
-  private formatImageUrl(base64Data: string): string {
-    // Check if the base64 data already includes the data URI prefix
-    if (base64Data.startsWith("data:image/")) {
-      // Already has proper format, return as is
-      return base64Data;
-    }
-
-    // Add the proper prefix for JPEG images
-    return `data:image/jpeg;base64,${base64Data}`;
-  }
-
-  /**
-   * Validates input parameters for image processing
-   * Throws appropriate errors for invalid inputs
-   */
-  private validateImageParameters(image: OcrImage, apiKey: string): void {
-    // Check for valid image object
-    if (!image || !image.id) {
-      throw new ImageProcessingError(
-        "Invalid image object",
-        "validation_error",
-        false
-      );
-    }
-
-    // Check for valid base64 data
-    if (!image.base64 || typeof image.base64 !== "string") {
-      throw new ImageProcessingError(
-        `Invalid base64 data for image ${image.id}`,
-        "validation_error",
-        false
-      );
-    }
-
-    // Check for valid API key
-    if (!apiKey || typeof apiKey !== "string" || apiKey.trim() === "") {
-      throw new ImageProcessingError(
-        "Missing or invalid API key",
-        "auth_error",
-        false
-      );
-    }
-
-    // Check base64 data length
-    const estimatedSize = Math.ceil((image.base64.length * 3) / 4);
-    if (estimatedSize > 10 * 1024 * 1024) {
-      // 10MB limit
-      throw new ImageProcessingError(
-        `Image ${image.id} exceeds maximum size of 10MB`,
-        "size_error",
-        false
-      );
-    }
-  }
-
-  /**
-   * Describes multiple images in batch with improved error handling
-   *
-   * @param images Array of OcrImage objects
-   * @param apiKey Mistral API key
-   * @param contextMap Optional map of image IDs to context text
-   * @param progressReporter Optional progress reporter
-   * @returns Promise resolving to a map of image IDs to descriptions
-   */
-  /**
-   * Validates the provided model name or falls back to default
-   * 
-   * @param model Optional model name to validate
-   * @returns A valid model name
-   */
-  private validateModel(model?: string): string {
-    // If no model provided or provided model is not in the list of available models, use default
-    if (!model || !this.availableModels.includes(model)) {
-      return this.defaultModel;
-    }
-    return model;
-  }
-
-  async describeImages(
-    images: OcrImage[],
-    apiKey: string,
-    contextMap?: Map<string, string>,
-    progressReporter?: ProgressReporter,
-    model?: string
-  ): Promise<Map<string, string>> {
-    const results = new Map<string, string>();
-    const totalImages = images.length;
-    const errors: { imageId: string; error: Error }[] = [];
-
-    try {
-      // Validate input parameters
-      if (!images || !Array.isArray(images)) {
-        throw new ImageProcessingError(
-          "Invalid images array",
-          "validation_error",
-          false
-        );
-      }
-
-      if (images.length === 0) {
-        return new Map<string, string>();
-      }
-
-      // Report starting the image processing
-      if (progressReporter) {
-        progressReporter.reportProgress({
-          stage: "processing-images",
-          progress: 0,
-          message: `Starting image description for ${totalImages} images`,
-          detail: `Preparing to process ${totalImages} images with Vision AI`,
-        });
-      }
-
-      // Process each image sequentially with better error tracking
-      for (let i = 0; i < totalImages; i++) {
-        const image = images[i];
-        const context = contextMap ? contextMap.get(image.id) : undefined;
-
-        // Report progress
-        if (progressReporter) {
-          progressReporter.reportProgress({
-            stage: "processing-images",
-            progress: Math.round((i / totalImages) * 100),
-            message: `Processing image ${i + 1} of ${totalImages}`,
-            detail: `Image ID: ${image.id}${context ? " (with context)" : ""}`,
-          });
-        }
-
-        try {
-          // Get description for the image
-          const description = await this.describeImage(image, apiKey, context, model);
-          results.set(image.id, description);
-
-          // Add a small delay between API calls to avoid rate limiting
-          if (i < totalImages - 1) {
-            await new Promise((resolve) => setTimeout(resolve, 500));
-          }
-        } catch (error: any) {
-          // Log error but continue processing other images
-          const errorMessage =
-            error instanceof Error ? error.message : String(error);
-          const errorType =
-            error instanceof ImageProcessingError ? error.type : "unknown";
-
-          console.error(
-            `Error processing image ${image.id} (${errorType}):`,
-            errorMessage
-          );
-
-          // Store the error details
-          errors.push({ imageId: image.id, error });
-
-          // Add placeholder in results
-          results.set(
-            image.id,
-            `[Image description unavailable: ${errorMessage}]`
-          );
-
-          // Report error through progress reporter
-          if (progressReporter) {
-            progressReporter.reportError(
-              error instanceof Error ? error : new Error(errorMessage),
-              "processing-images"
-            );
-          }
-        }
-      }
-
-      // Report completion with error summary if needed
-      if (progressReporter) {
-        const successCount = totalImages - errors.length;
-
-        progressReporter.reportProgress({
-          stage: "processing-images",
-          progress: 100,
-          message: `Processed ${successCount} of ${totalImages} images successfully`,
-          detail:
-            errors.length > 0
-              ? `Failed to process ${errors.length} images. Check logs for details.`
-              : `All images processed successfully`,
-        });
-      }
-
-      return results;
-    } catch (error: any) {
-      // Handle overall batch processing error
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
-
-      // Report batch failure
-      if (progressReporter) {
-        progressReporter.reportError(
-          error instanceof Error ? error : new Error(errorMessage),
-          "processing-images"
-        );
-      }
-
-      throw new Error(`Batch image description failed: ${errorMessage}`);
-    }
-  }
-
-  /**
-   * Builds a prompt for the Vision API based on the context
-   * Uses the template from image-prompt-template.ts
-   *
-   * @param contextText Optional context text related to the image
-   * @returns Formatted prompt string
-   */
-  private buildImagePrompt(contextText?: string): string {
-    return formatImagePrompt(contextText);
-  }
-
-  /**
-   * Cancels an ongoing operation if possible
-   */
-  cancelOperation(): void {
-    if (this.abortController) {
-      this.abortController.abort();
-      this.abortController = null;
-    }
-  }
+ /**
+  * Cancels an ongoing operation if possible
+  */
+ cancelOperation(): void {
+   imageServiceFactory.cancelOperation();
+ }
 }
 
 // Create a singleton instance for easy import
-export const mistralImageService = new MistralImageService();
+export const multiProviderImageService = new MultiProviderImageService();
+
+// For backward compatibility, export the multiProviderImageService as mistralImageService
+export const mistralImageService = multiProviderImageService;

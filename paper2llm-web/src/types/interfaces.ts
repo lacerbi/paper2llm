@@ -1,6 +1,23 @@
 // AI Summary: Defines core TypeScript interfaces for the PDF-to-Markdown converter.
 // Includes file handling, API communication, progress tracking, and API key management interfaces.
 
+import {
+  ApiProvider,
+  ApiKeyStorage,
+  ApiKeyStorageOptions,
+  ApiKeyStorageType,
+  ApiKeyExpiration
+} from "../adapters/web/api-storage/api-key-storage";
+
+// Re-export for backward compatibility
+export type {
+  ApiProvider,
+  ApiKeyStorage,
+  ApiKeyStorageOptions,
+  ApiKeyStorageType,
+  ApiKeyExpiration
+};
+
 /**
  * Represents a PDF file that can be processed by the application.
  */
@@ -55,82 +72,21 @@ export interface FileUploaderState {
   url: string;
 }
 
-/**
- * Storage type for API keys
- */
-export type ApiKeyStorageType = 'local' | 'session';
 
-/**
- * Expiration options for API keys
- */
-export type ApiKeyExpiration = 'session' | '1day' | '7days' | '30days' | 'never';
-
-/**
- * Options for storing API keys
- */
-export interface ApiKeyStorageOptions {
-  password?: string;
-  storageType?: ApiKeyStorageType;
-  expiration?: ApiKeyExpiration;
-}
-
-/**
- * Interface for API key storage and management
- */
-export interface ApiKeyStorage {
-  /**
-   * Securely stores an API key with options for storage type and expiration
-   */
-  storeApiKey(apiKey: string, options?: ApiKeyStorageOptions): Promise<void>;
-  
-  /**
-   * Retrieves a stored API key
-   */
-  retrieveApiKey(password?: string): Promise<string | null>;
-  
-  /**
-   * Checks if an API key is stored
-   */
-  hasApiKey(): boolean;
-  
-  /**
-   * Validates if an API key has the correct format
-   */
-  validateApiKey(apiKey: string): boolean;
-  
-  /**
-   * Removes the stored API key
-   */
-  clearApiKey(): void;
-  
-  /**
-   * Gets the storage type being used for the API key
-   */
-  getStorageType(): ApiKeyStorageType | null;
-  
-  /**
-   * Gets the expiration setting for the stored API key
-   */
-  getExpiration(): ApiKeyExpiration | null;
-  
-  /**
-   * Checks if the stored API key has expired
-   */
-  hasExpired(): boolean;
-}
 
 /**
  * Represents the state of the API key manager
  */
 export interface ApiKeyManagerState {
-  apiKey: string;
+  apiKeys: Record<ApiProvider, string>;
+  selectedProvider: ApiProvider;
   password: string;
   showPasswordField: boolean;
   showApiKeyField: boolean;
-  isStored: boolean;
-  isValid: boolean;
+  isStored: Record<ApiProvider, boolean>;
+  isValid: Record<ApiProvider, boolean>;
   error: string | null;
-  isAuthenticated: boolean;
+  isAuthenticated: Record<ApiProvider, boolean>;
 }
 
 /**
@@ -247,6 +203,7 @@ export interface MarkdownOptions {
   processImages?: boolean;
   keepOriginalImages?: boolean;
   debugMode?: boolean;
+  replaceImagesWithPlaceholder?: boolean; // Option to replace images with "[not displayed]" text
 }
 
 /**
@@ -273,6 +230,28 @@ export interface PdfToMdResult {
     originalUrl?: string;
   };
   timestamp: string;
+  visionModel?: string;
+  visionModelProvider?: ApiProvider;
+}
+
+/**
+ * Provider-specific API key validation options
+ */
+export interface ProviderApiKeyInfo {
+  name: string;
+  description: string;
+  validationPattern: RegExp;
+  docsUrl: string;
+}
+
+/**
+ * Provider-specific model information
+ */
+export interface ProviderModelInfo {
+  id: string;
+  name: string;
+  description: string;
+  provider: ApiProvider;
 }
 
 /**
@@ -315,6 +294,17 @@ export interface DomainHandlerRegistry {
 }
 
 /**
+ * Provider-specific vision model information
+ */
+export interface VisionModelInfo {
+  id: string;
+  name: string;
+  description: string;
+  provider: ApiProvider;
+  maxTokens?: number;
+}
+
+/**
  * Service for image description using Vision API
  */
 export interface ImageService {
@@ -322,14 +312,16 @@ export interface ImageService {
    * Describes an image using the Vision API
    * 
    * @param image OcrImage object containing image data
-   * @param apiKey Mistral API key
+   * @param apiKey API key for the provider
+   * @param provider The API provider to use (mistral or openai)
    * @param contextText Optional context to include with the image
-   * @param model Optional model name to use for image description (defaults to pixtral-12b-2409)
+   * @param model Optional model name to use for image description
    * @returns Promise resolving to the image description
    */
   describeImage(
     image: OcrImage,
     apiKey: string,
+    provider: ApiProvider,
     contextText?: string,
     model?: string
   ): Promise<string>;
@@ -338,19 +330,37 @@ export interface ImageService {
    * Describes multiple images in batch
    * 
    * @param images Array of OcrImage objects
-   * @param apiKey Mistral API key
+   * @param apiKey API key for the provider
+   * @param provider The API provider to use (mistral or openai)
    * @param contextMap Optional map of image IDs to context text
    * @param progressReporter Optional progress reporter
-   * @param model Optional model name to use for image description (defaults to pixtral-12b-2409)
+   * @param model Optional model name to use for image description
    * @returns Promise resolving to a map of image IDs to descriptions
    */
   describeImages(
     images: OcrImage[],
     apiKey: string,
+    provider: ApiProvider,
     contextMap?: Map<string, string>,
     progressReporter?: ProgressReporter,
     model?: string
   ): Promise<Map<string, string>>;
+  
+  /**
+   * Gets the available vision models for a provider
+   * 
+   * @param provider The API provider
+   * @returns Array of available vision models
+   */
+  getAvailableModels(provider: ApiProvider): VisionModelInfo[];
+  
+  /**
+   * Gets the default vision model for a provider
+   * 
+   * @param provider The API provider
+   * @returns The default model ID
+   */
+  getDefaultModel(provider: ApiProvider): string;
   
   /**
    * Cancels an ongoing operation if possible

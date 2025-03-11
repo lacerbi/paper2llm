@@ -91,8 +91,9 @@ export class MarkdownProcessor {
     options: MarkdownOptions = {}
   ): string {
     try {
-      // If no image descriptions provided, return original markdown
-      if (!imageDescriptions || imageDescriptions.size === 0) {
+      // If no image descriptions provided and we're not in the special "no descriptions" mode,
+      // return original markdown
+      if ((!imageDescriptions || imageDescriptions.size === 0) && !options.replaceImagesWithPlaceholder) {
         if (options.debugMode) {
           console.log(
             "No image descriptions provided, returning original markdown"
@@ -152,10 +153,10 @@ export class MarkdownProcessor {
         imageId = imageId.split("?")[0];
 
         // Try direct match first
-        let description = imageDescriptions.get(imageId);
+        let description = imageDescriptions?.get(imageId);
 
         // If no match, try to find by partial matching (case-insensitive comparison)
-        if (!description) {
+        if (!description && imageDescriptions) {
           const potentialMatches = Array.from(imageDescriptions.keys()).filter(
             (key) =>
               key.toLowerCase().includes(imageId.toLowerCase()) ||
@@ -178,6 +179,9 @@ export class MarkdownProcessor {
           console.log(`Description found: ${description ? "Yes" : "No"}`);
         }
 
+        // Format replacement based on whether we have a description or not
+        let replacement = "";
+        
         if (description) {
           // Post-process the description: only trim leading and trailing whitespace
           // but preserve internal newlines for formatting
@@ -216,6 +220,19 @@ export class MarkdownProcessor {
           }
 
           // Replace the image reference with the enhanced version
+          enhancedMarkdown = enhancedMarkdown.replace(match.full, replacement);
+        } else if (options.replaceImagesWithPlaceholder) {
+          // If no description is available and we're in placeholder mode,
+          // replace with the default placeholder text
+          replacement = "> **Image.** [not displayed]\n";
+          
+          if (options.debugMode) {
+            console.log(
+              `No description found for image: ${imageId}, using placeholder text`
+            );
+          }
+          
+          // Replace the image reference with the placeholder
           enhancedMarkdown = enhancedMarkdown.replace(match.full, replacement);
         } else if (options.debugMode) {
           console.log(`No description found for image: ${imageId}`);

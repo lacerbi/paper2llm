@@ -6,11 +6,12 @@ import {
   OcrOptions, 
   MarkdownOptions, 
   PdfToMdResult,
-  ProgressReporter
+  ProgressReporter,
+  ApiProvider
 } from '../types/interfaces';
 import { mistralOcrService } from './ocr-service';
 import { markdownProcessor } from './markdown-processor';
-import { mistralImageService } from './image-service';
+import { multiProviderImageService } from './image-service';
 
 export class PdfToMdService {
   /**
@@ -18,11 +19,13 @@ export class PdfToMdService {
    */
   public async convertPdfToMarkdown(
     file: PdfFile,
-    apiKey: string,
+    ocrApiKey: string,
+    visionApiKey: string,
     ocrOptions: OcrOptions = {},
     markdownOptions: MarkdownOptions = {},
     progressReporter?: ProgressReporter,
-    visionModel?: string
+    visionModel?: string,
+    visionProvider: ApiProvider = 'mistral'
   ): Promise<PdfToMdResult> {
     try {
       // Step 1: Process the PDF with OCR
@@ -36,7 +39,7 @@ export class PdfToMdService {
       
       const ocrResult = await mistralOcrService.processPdf(
         file,
-        apiKey,
+        ocrApiKey,
         ocrOptions,
         progressReporter
       );
@@ -58,28 +61,33 @@ export class PdfToMdService {
       // Step 3: Process images if enabled
       let enhancedMarkdown = markdownResult.markdown;
       
-      if (markdownOptions.processImages && ocrResult.pages.some(page => page.images.length > 0)) {
-        if (progressReporter) {
-          progressReporter.reportProgress({
-            stage: 'processing-images',
-            progress: 60,
-            message: 'Processing images with Vision AI',
-            detail: 'Extracting image contexts and preparing for description'
-          });
-        }
-        
-        // Collect all images from all pages
-        const allImages = ocrResult.pages.flatMap(page => page.images);
-        
-        // Only proceed if there are images to process
-        if (allImages.length > 0) {
+      // Check if there are any images to process
+      const hasImages = ocrResult.pages.some(page => page.images.length > 0);
+      
+      if (hasImages) {
+        // Determine if we should process images with AI or use placeholder text
+        if (markdownOptions.processImages && visionApiKey && visionProvider && visionModel) {
+          // Process images with vision AI
+          if (progressReporter) {
+            progressReporter.reportProgress({
+              stage: 'processing-images',
+              progress: 60,
+              message: 'Processing images with Vision AI',
+              detail: 'Extracting image contexts and preparing for description'
+            });
+          }
+          
+          // Collect all images from all pages
+          const allImages = ocrResult.pages.flatMap(page => page.images);
+          
           // Build context map for all images
           const contextMap = markdownProcessor.buildImageContextMap(ocrResult.pages);
           
           // Process all images to get descriptions
-          const imageDescriptions = await mistralImageService.describeImages(
+          const imageDescriptions = await multiProviderImageService.describeImages(
             allImages,
-            apiKey,
+            visionApiKey,
+            visionProvider,
             contextMap,
             progressReporter,
             visionModel
@@ -99,6 +107,26 @@ export class PdfToMdService {
             markdownResult.markdown,
             imageDescriptions,
             markdownOptions
+          );
+        } else {
+          // Replace images with placeholder text instead
+          if (progressReporter) {
+            progressReporter.reportProgress({
+              stage: 'enhancing-markdown',
+              progress: 85,
+              message: 'Replacing images with placeholder text',
+              detail: 'No image processing required'
+            });
+          }
+          
+          // Use the same enhanceImageReferences method but with special option
+          enhancedMarkdown = markdownProcessor.enhanceImageReferences(
+            markdownResult.markdown,
+            new Map(), // Empty map since we're not using descriptions
+            {
+              ...markdownOptions,
+              replaceImagesWithPlaceholder: true // Special flag to use placeholder text
+            }
           );
         }
       }
@@ -123,7 +151,9 @@ export class PdfToMdService {
           source: file.source,
           originalUrl: file.originalUrl
         },
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        visionModel: visionModel, // Can be undefined if "None" option was selected
+        visionModelProvider: visionProvider // Can be undefined if "None" option was selected
       };
       
       return finalResult;
@@ -138,7 +168,7 @@ export class PdfToMdService {
    */
   public cancelOperation(): void {
     mistralOcrService.cancelOperation();
-    mistralImageService.cancelOperation();
+    multiProviderImageService.cancelOperation();
   }
 }
 
