@@ -1,4 +1,4 @@
-# paper2llm
+# paper2llm 📄→✨
 
 Convert PDFs with a focus on academic papers into human-and-LLM-friendly **text-only Markdown files**.
 
