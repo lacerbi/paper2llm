@@ -4,6 +4,7 @@
 
 import axios, { AxiosInstance, AxiosResponse } from "axios";
 import { ApiProvider, OcrImage, VisionModelInfo } from "../../types/interfaces";
+import { formatImagePrompt } from "../templates/image-prompt-template";
 import { BaseImageService, ImageProcessingError } from "./base-image-service";
 
 /**
@@ -52,17 +53,10 @@ export class OpenAIImageService extends BaseImageService {
 
   /**
    * Builds a prompt for the Vision API based on the context
+   * Uses the standardized template from image-prompt-template.ts
    */
-  protected buildImagePrompt(contextText?: string): string {
-    // OpenAI vision prompt template
-    const basePrompt =
-      "Please describe this image in detail. Focus on key elements, text content, layouts, and figures.";
-
-    if (!contextText) {
-      return basePrompt;
-    }
-
-    return `${basePrompt}\n\nAdditional context: ${contextText}`;
+  protected buildImagePrompt(contextText?: string, provider?: ApiProvider): string {
+    return formatImagePrompt(contextText);
   }
 
   /**
@@ -250,7 +244,8 @@ export class OpenAIImageService extends BaseImageService {
         response.data.choices[0].message &&
         response.data.choices[0].message.content
       ) {
-        return response.data.choices[0].message.content.trim();
+        const rawDescription = response.data.choices[0].message.content.trim();
+        return this.processDescriptionResponse(rawDescription, image.id, retryCount);
       } else {
         throw new ImageProcessingError(
           "Invalid response format from OpenAI API",

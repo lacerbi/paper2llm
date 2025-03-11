@@ -10,6 +10,7 @@ import {
   ProgressReporter,
   VisionModelInfo
 } from "../../types/interfaces";
+import { extractDescriptionFromTags } from "../templates/image-prompt-template";
 
 /**
  * Custom error types for image processing failures
@@ -17,12 +18,14 @@ import {
 export class ImageProcessingError extends Error {
   type: string;
   retryable: boolean;
+  rawResponse?: string;
 
-  constructor(message: string, type: string, retryable: boolean = false) {
+  constructor(message: string, type: string, retryable: boolean = false, rawResponse?: string) {
     super(message);
     this.name = "ImageProcessingError";
     this.type = type;
     this.retryable = retryable;
+    this.rawResponse = rawResponse;
   }
 }
 
@@ -225,6 +228,8 @@ export abstract class BaseImageService implements ImageService {
 
   /**
    * Build a prompt for the Vision API based on the context and provider
+   * Implementations should use formatImagePrompt from the template file
+   * to ensure consistent XML tag handling across providers
    */
   protected abstract buildImagePrompt(contextText?: string, provider?: ApiProvider): string;
 
@@ -249,6 +254,39 @@ export abstract class BaseImageService implements ImageService {
     model?: string,
     retryCount?: number
   ): Promise<string>;
+
+  /**
+   * Process a raw description response to extract content from XML tags
+   * @param rawDescription The raw response from the vision API
+   * @param imageId Optional image ID for better error reporting
+   * @param retryCount Current retry count
+   * @returns The processed description
+   * @throws ImageProcessingError if the description lacks required XML tags
+   */
+  protected processDescriptionResponse(
+    rawDescription: string, 
+    imageId?: string, 
+    retryCount: number = 0
+  ): string {
+    if (!rawDescription) {
+      return "";
+    }
+
+    // Process the response through XML tag extraction
+    const extractedDescription = extractDescriptionFromTags(rawDescription);
+    if (extractedDescription) {
+      return extractedDescription;
+    } else {
+      const idInfo = imageId ? ` for image ${imageId}` : '';
+      console.warn(`Description${idInfo} missing required XML tags: ${rawDescription.substring(0, 100)}...`);
+      throw new ImageProcessingError(
+        "Image description format invalid: missing required XML tags. Raw response preserved for debugging.",
+        "response_format_missing_tags",
+        retryCount < this.maxRetries,
+        rawDescription
+      );
+    }
+  }
 
   /**
    * Get available models for a specific provider

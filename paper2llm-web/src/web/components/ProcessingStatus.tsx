@@ -15,7 +15,9 @@ import {
   Chip,
   Divider,
   Collapse,
-  IconButton
+  IconButton,
+  Paper,
+  TextField
 } from '@mui/material';
 import { 
   CloudUpload as UploadIcon,
@@ -28,10 +30,67 @@ import {
   Description as PrepareIcon,
   Cancel as CancelIcon,
   Replay as RetryIcon,
-  ExpandMore as ExpandMoreIcon
+  ExpandMore as ExpandMoreIcon,
+  Code as CodeIcon,
+  ContentCopy as CopyIcon,
+  VisibilityOff as VisibilityOffIcon,
+  Visibility as VisibilityIcon
 } from '@mui/icons-material';
 import { ProgressUpdate } from '../../types/interfaces';
 import { ImageProcessingError } from '../../core/image-service';
+
+// Raw Response Viewer Component
+const RawResponseViewer = ({ response }: { response: string }) => {
+  const [isVisible, setIsVisible] = useState(false);
+  
+  const handleCopy = () => {
+    navigator.clipboard.writeText(response);
+  };
+
+  return (
+    <Box sx={{ mt: 2 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+        <Typography variant="subtitle2" color="text.secondary">
+          Raw Response from Vision API
+        </Typography>
+        <Stack direction="row" spacing={1}>
+          <IconButton 
+            size="small" 
+            onClick={() => setIsVisible(!isVisible)}
+            color="primary"
+          >
+            {isVisible ? <VisibilityOffIcon fontSize="small" /> : <VisibilityIcon fontSize="small" />}
+          </IconButton>
+          <IconButton 
+            size="small" 
+            onClick={handleCopy}
+            color="primary"
+          >
+            <CopyIcon fontSize="small" />
+          </IconButton>
+        </Stack>
+      </Box>
+      
+      <Collapse in={isVisible}>
+        <Paper 
+          variant="outlined" 
+          sx={{ 
+            p: 2, 
+            maxHeight: '300px', 
+            overflow: 'auto',
+            fontFamily: 'monospace',
+            fontSize: '0.85rem',
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word',
+            bgcolor: 'rgba(0, 0, 0, 0.04)'
+          }}
+        >
+          {response || "No raw response available"}
+        </Paper>
+      </Collapse>
+    </Box>
+  );
+};
 
 interface ProcessingStatusProps {
   isProcessing: boolean;
@@ -304,6 +363,12 @@ const ProcessingStatus: React.FC<ProcessingStatusProps> = ({
               <Typography variant="caption" color="text.secondary">
                 Error type: {(error as ImageProcessingError).type}
               </Typography>
+              
+              {/* Show raw response viewer for missing XML tags errors */}
+              {(error as ImageProcessingError).type === 'response_format_missing_tags' && 
+               (error as ImageProcessingError).rawResponse && (
+                <RawResponseViewer response={(error as ImageProcessingError).rawResponse || ''} />
+              )}
             </Box>
           )}
           

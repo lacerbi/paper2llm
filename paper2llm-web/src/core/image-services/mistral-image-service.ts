@@ -262,7 +262,8 @@ export class MistralImageService extends BaseImageService {
         response.data.choices[0].message &&
         response.data.choices[0].message.content
       ) {
-        return response.data.choices[0].message.content.trim();
+        const rawDescription = response.data.choices[0].message.content.trim();
+        return this.processDescriptionResponse(rawDescription, image.id, retryCount);
       } else {
         throw new ImageProcessingError(
           "Invalid response format from Vision API",
