@@ -13,7 +13,7 @@ export const IMAGE_PROMPT_TEMPLATE = `# Task
 
 Please describe the visual content of this image in detail, focusing on all visible elements, text, and relevant information.
 
-- Focus on visual elements directly observable in the image: shapes, colors, objects, arrangements, and any visible text.
+- Focus primarily on visual elements directly observable in the image: shapes, colors, objects, arrangements, and any visible text. When appropriate, include reasonable interpretation of what these elements represent based on their visual context.
 - For academic or technical visuals: Identify the specific type (bar chart, line graph, flow diagram, etc.). Describe axes, labels, data points, and visual patterns exactly as they appear in the image.
 - For any text visible in the image: Provide an accurate transcription, maintaining the original layout where meaningful.
 - For images with multiple panels: Describe each panel separately based on its visual appearance. Note any panel labels if present. If the composition is unusual or the panels interact in a non-standard way, explain their relationship.
@@ -45,7 +45,7 @@ export function formatImagePrompt(contextText?: string): string {
   }
 
   // Insert the context text with formatting
-  const formattedContext = `#Context\n\nContext for reference:\n\n<context>\n${contextText}\n</context>\n\nUse this only to correctly identify technical terms for what you can see in the image.\nYour image description should focus on the visual aspects of the figure and not a mere repetition of the image caption or provided context.\n`;
+  const formattedContext = `#Context\n\nContext for reference:\n\n<context>\n${contextText}\n</context>\n\nUse this to correctly identify technical terms and provide reasonable interpretations of what you can see in the image.\nYour image description should still focus primarily on the visual aspects of the figure and not be a mere repetition of the image caption or provided context.\n`;
 
   return IMAGE_PROMPT_TEMPLATE.replace("{contextText}", formattedContext);
 }
