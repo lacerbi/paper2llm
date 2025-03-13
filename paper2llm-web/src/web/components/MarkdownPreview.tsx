@@ -48,6 +48,7 @@ import {
   Subject as MainContentIcon,
   BookmarkBorder as AppendixIcon,
   Info as BackmatterIcon,
+  InfoOutlined as InfoIcon,
   MoreVert as MoreIcon,
   ViewModule as AllPartsIcon,
   MenuBook as CitationIcon,
@@ -701,9 +702,49 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
           <Box>
             <Typography
               variant="subtitle2"
-              sx={{ mb: 1, fontWeight: "medium", color: "text.secondary" }}
+              sx={{
+                mb: 1,
+                fontWeight: "medium",
+                color: "text.secondary",
+                display: "flex",
+                alignItems: "center",
+              }}
             >
               Document Parts
+              <Tooltip
+                title={
+                  <React.Fragment>
+                    <Typography variant="body2" component="p" sx={{ mt: 1 }}>
+                      <b>Main Content:</b> The main text.
+                    </Typography>
+                    <Typography variant="body2" component="p">
+                      <b>Appendix:</b> Supplementary material.
+                    </Typography>
+                    <Typography variant="body2" component="p">
+                      <b>Backmatter:</b> Acknowledgments, references, and other
+                      peripheral information.
+                    </Typography>
+                    <Typography variant="body2" component="p">
+                      <b>All Parts:</b> The complete document with all sections
+                      combined.
+                    </Typography>
+                    <Typography
+                      variant="body2"
+                      component="p"
+                      sx={{ fontStyle: "italic", mb: 1 }}
+                    >
+                      Note: Sections are extracted automatically and the splits
+                      may be inaccurate.
+                    </Typography>
+                  </React.Fragment>
+                }
+                arrow
+                placement="top"
+              >
+                <IconButton size="small" sx={{ ml: 0.5, p: 0 }}>
+                  <InfoIcon fontSize="small" color="action" />
+                </IconButton>
+              </Tooltip>
             </Typography>
             <Stack direction="row" spacing={1} alignItems="center">
               <Button
