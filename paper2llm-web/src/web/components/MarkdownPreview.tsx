@@ -95,7 +95,9 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
     "success"
   );
   const [copyAnchorEl, setCopyAnchorEl] = useState<null | HTMLElement>(null);
-  const [downloadAnchorEl, setDownloadAnchorEl] = useState<null | HTMLElement>(null);
+  const [downloadAnchorEl, setDownloadAnchorEl] = useState<null | HTMLElement>(
+    null
+  );
   const [markdownSections, setMarkdownSections] =
     useState<MarkdownSections | null>(null);
   const [sectionMetadata, setSectionMetadata] =
@@ -190,30 +192,30 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
       case "allparts":
         // Get all parts with titles and concatenate them
         const parts: string[] = [];
-        
+
         // Add main content first (always present)
         if (markdownSections.mainContent) {
           parts.push(markdownSections.mainContent);
         }
-        
+
         // Add appendix if present
         if (markdownSections.appendix) {
           const title = markdownSections.title;
-          const appendixContent = addTitle 
+          const appendixContent = addTitle
             ? `# ${title} - Appendix\n\n---\n\n${markdownSections.appendix}`
             : markdownSections.appendix;
           parts.push(appendixContent);
         }
-        
+
         // Add backmatter if present
         if (markdownSections.backmatter) {
           const title = markdownSections.title;
-          const backmatterContent = addTitle 
+          const backmatterContent = addTitle
             ? `# ${title} - Backmatter\n\n---\n\n${markdownSections.backmatter}`
             : markdownSections.backmatter;
           parts.push(backmatterContent);
         }
-        
+
         content = parts.join("\n\n");
         break;
       default:
@@ -223,7 +225,11 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
     if (!content) return null;
 
     // Add title header for appendix and backmatter if requested
-    if (addTitle && (section === "appendix" || section === "backmatter") && markdownSections) {
+    if (
+      addTitle &&
+      (section === "appendix" || section === "backmatter") &&
+      markdownSections
+    ) {
       const title = markdownSections.title;
       const sectionTitle = section.charAt(0).toUpperCase() + section.slice(1);
       const headerContent = `# ${title} - ${sectionTitle}\n\n---\n\n`;
@@ -252,7 +258,9 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
     }
   };
 
-  const handleCopySection = (section: "main" | "appendix" | "backmatter" | "allparts") => {
+  const handleCopySection = (
+    section: "main" | "appendix" | "backmatter" | "allparts"
+  ) => {
     const content = getSectionContent(section, true);
 
     if (!content) {
@@ -293,7 +301,7 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
       const baseFileName = sourceFile.name.replace(/\.[^/.]+$/, ""); // Remove extension
       let downloadCount = 0;
       let successCount = 0;
-      
+
       // Download main content (should always exist)
       if (mainContent) {
         downloadCount++;
@@ -301,14 +309,14 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.href = url;
-        link.download = `${baseFileName}-main.md`;
+        link.download = `${baseFileName}_main.md`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
         successCount++;
       }
-      
+
       // Download appendix if it exists
       if (appendixContent) {
         downloadCount++;
@@ -316,14 +324,14 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.href = url;
-        link.download = `${baseFileName}-appendix.md`;
+        link.download = `${baseFileName}_appendix.md`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
         successCount++;
       }
-      
+
       // Download backmatter if it exists
       if (backmatterContent) {
         downloadCount++;
@@ -331,21 +339,23 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.href = url;
-        link.download = `${baseFileName}-backmatter.md`;
+        link.download = `${baseFileName}_backmatter.md`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
         successCount++;
       }
-      
+
       // Show success message
-      setSnackbarMessage(`${successCount} of ${downloadCount} parts downloaded successfully`);
+      setSnackbarMessage(
+        `${successCount} of ${downloadCount} parts downloaded successfully`
+      );
       setSnackbarSeverity("success");
       setSnackbarOpen(true);
       return;
     }
-    
+
     // Regular download handling for other section types
     const contentToDownload = getSectionContent(section, true);
     let sectionName = "";
@@ -606,25 +616,6 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
               >
                 <MenuItem
                   onClick={() => {
-                    handleCopySection("allparts");
-                    handleCopyMenuClose();
-                  }}
-                >
-                  <ListItemIcon>
-                    <AllPartsIcon fontSize="small" />
-                  </ListItemIcon>
-                  <ListItemText
-                    primary="All Parts"
-                    secondary={
-                      sectionMetadata?.wordCount.total
-                        ? `${sectionMetadata.wordCount.total} words total`
-                        : undefined
-                    }
-                  />
-                </MenuItem>
-                <Divider />
-                <MenuItem
-                  onClick={() => {
                     handleCopySection("main");
                     handleCopyMenuClose();
                   }}
@@ -681,6 +672,25 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
                     }
                   />
                 </MenuItem>
+                <Divider />
+                <MenuItem
+                  onClick={() => {
+                    handleCopySection("allparts");
+                    handleCopyMenuClose();
+                  }}
+                >
+                  <ListItemIcon>
+                    <AllPartsIcon fontSize="small" />
+                  </ListItemIcon>
+                  <ListItemText
+                    primary="All Parts"
+                    secondary={
+                      sectionMetadata?.wordCount.total
+                        ? `${sectionMetadata.wordCount.total} words total`
+                        : undefined
+                    }
+                  />
+                </MenuItem>
               </Menu>
 
               <Button
@@ -698,21 +708,6 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
                 open={Boolean(downloadAnchorEl)}
                 onClose={handleDownloadMenuClose}
               >
-                <MenuItem
-                  onClick={() => {
-                    handleDownload("allparts");
-                    handleDownloadMenuClose();
-                  }}
-                >
-                  <ListItemIcon>
-                    <AllPartsIcon fontSize="small" />
-                  </ListItemIcon>
-                  <ListItemText
-                    primary="All Parts"
-                    secondary="Download all sections as separate files"
-                  />
-                </MenuItem>
-                <Divider />
                 <MenuItem
                   onClick={() => {
                     handleDownload("main");
@@ -769,6 +764,21 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
                         ? `${sectionMetadata.wordCount.backmatter} words`
                         : "Not available"
                     }
+                  />
+                </MenuItem>
+                <Divider />
+                <MenuItem
+                  onClick={() => {
+                    handleDownload("allparts");
+                    handleDownloadMenuClose();
+                  }}
+                >
+                  <ListItemIcon>
+                    <AllPartsIcon fontSize="small" />
+                  </ListItemIcon>
+                  <ListItemText
+                    primary="All Parts"
+                    secondary="Download all sections as separate files"
                   />
                 </MenuItem>
               </Menu>
@@ -930,7 +940,7 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
         <Tabs
           value={tabValue}
           onChange={handleTabChange}
-aria-label="markdown view tabs"
+          aria-label="markdown view tabs"
           indicatorColor="primary"
         >
           <Tab
