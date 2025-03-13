@@ -1,5 +1,5 @@
 // AI Summary: React component for rendering and interacting with converted Markdown.
-// Features include syntax highlighting, copying, downloading, and metadata display.
+// Features include syntax highlighting, copying, downloading, metadata display, and BibTeX citation generation.
 // Uses Material UI for modern styling and improved user experience.
 
 import React, { useState, useEffect } from "react";
@@ -27,6 +27,9 @@ import {
   MenuItem,
   ListItemButton,
   Tooltip,
+  Checkbox,
+  FormControlLabel,
+  CircularProgress,
 } from "@mui/material";
 import {
   ContentCopy as CopyIcon,
@@ -47,6 +50,7 @@ import {
   Info as BackmatterIcon,
   MoreVert as MoreIcon,
   ViewModule as AllPartsIcon,
+  MenuBook as CitationIcon,
 } from "@mui/icons-material";
 import { PdfToMdResult } from "../../types/interfaces";
 import {
@@ -55,6 +59,7 @@ import {
   getMarkdownSectionsMetadata,
   MarkdownSectionsMetadata,
 } from "../../core/utils/markdown-splitter";
+import { generateBibTeXFromMarkdown } from "../../core/utils/bibtex-generator";
 
 interface MarkdownPreviewProps {
   result: PdfToMdResult | null;
@@ -91,9 +96,9 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
   const [tabValue, setTabValue] = useState(0);
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState("");
-  const [snackbarSeverity, setSnackbarSeverity] = useState<"success" | "error">(
-    "success"
-  );
+  const [snackbarSeverity, setSnackbarSeverity] = useState<
+    "success" | "error" | "info"
+  >("success");
   const [copyAnchorEl, setCopyAnchorEl] = useState<null | HTMLElement>(null);
   const [downloadAnchorEl, setDownloadAnchorEl] = useState<null | HTMLElement>(
     null
@@ -102,6 +107,8 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
     useState<MarkdownSections | null>(null);
   const [sectionMetadata, setSectionMetadata] =
     useState<MarkdownSectionsMetadata | null>(null);
+  const [includeBibtex, setIncludeBibtex] = useState(false);
+  const [isBibtexLoading, setIsBibtexLoading] = useState(false);
 
   // Parse the markdown into sections when the component renders or when the markdown changes
   useEffect(() => {
@@ -128,19 +135,27 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
     setTabValue(newValue);
   };
 
-  const handleCopyToClipboard = () => {
-    navigator.clipboard
-      .writeText(markdown)
-      .then(() => {
-        setSnackbarMessage("Copied to clipboard!");
-        setSnackbarSeverity("success");
-        setSnackbarOpen(true);
-      })
-      .catch(() => {
-        setSnackbarMessage("Failed to copy");
+  const handleCopyToClipboard = async () => {
+    try {
+      const contentToCopy = await getContentWithOptionalBibtex("full");
+
+      if (!contentToCopy) {
+        setSnackbarMessage("No content to copy");
         setSnackbarSeverity("error");
         setSnackbarOpen(true);
-      });
+        return;
+      }
+
+      await navigator.clipboard.writeText(contentToCopy);
+      setSnackbarMessage("Copied to clipboard!");
+      setSnackbarSeverity("success");
+      setSnackbarOpen(true);
+    } catch (error) {
+      console.error("Error copying to clipboard:", error);
+      setSnackbarMessage("Failed to copy");
+      setSnackbarSeverity("error");
+      setSnackbarOpen(true);
+    }
   };
 
   const handleSnackbarClose = (
@@ -167,6 +182,18 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
 
   const handleDownloadMenuClose = () => {
     setDownloadAnchorEl(null);
+  };
+
+  const handleBibtexChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setIncludeBibtex(event.target.checked);
+
+    if (event.target.checked) {
+      setSnackbarMessage(
+        "BibTeX citation will be included in copies and downloads"
+      );
+      setSnackbarSeverity("info");
+      setSnackbarOpen(true);
+    }
   };
 
   const getSectionContent = (
@@ -239,6 +266,39 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
     return content;
   };
 
+  // New function to get content with optional BibTeX
+  const getContentWithOptionalBibtex = async (
+    section: "full" | "main" | "appendix" | "backmatter" | "allparts",
+    addTitle: boolean = false
+  ): Promise<string | null> => {
+    const content = getSectionContent(section, addTitle);
+
+    if (!content) return null;
+
+    // If BibTeX is not requested, return the content as is
+    if (!includeBibtex) return content;
+
+    try {
+      setIsBibtexLoading(true);
+
+      // Only add BibTeX to the full document or main content
+      if (section === "full" || section === "main" || section === "allparts") {
+        const bibtex = await generateBibTeXFromMarkdown(content);
+        return `\`\`\`\n${bibtex}\n\`\`\`\n\n---\n\n${content}`;
+      }
+
+      return content;
+    } catch (error) {
+      console.error("Error generating BibTeX:", error);
+      setSnackbarMessage("Failed to generate BibTeX citation");
+      setSnackbarSeverity("error");
+      setSnackbarOpen(true);
+      return content;
+    } finally {
+      setIsBibtexLoading(false);
+    }
+  };
+
   const getSectionDisplayName = (
     section: "full" | "main" | "appendix" | "backmatter" | "allparts"
   ): string => {
@@ -258,141 +318,160 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
     }
   };
 
-  const handleCopySection = (
+  const handleCopySection = async (
     section: "main" | "appendix" | "backmatter" | "allparts"
   ) => {
-    const content = getSectionContent(section, true);
+    try {
+      const content = await getContentWithOptionalBibtex(section, true);
 
-    if (!content) {
-      setSnackbarMessage(
-        `This document does not contain a ${getSectionDisplayName(
-          section
-        ).toLowerCase()} section`
-      );
-      setSnackbarSeverity("error");
-      setSnackbarOpen(true);
-      return;
-    }
-
-    navigator.clipboard
-      .writeText(content)
-      .then(() => {
+      if (!content) {
         setSnackbarMessage(
-          `${getSectionDisplayName(section)} copied to clipboard!`
+          `This document does not contain a ${getSectionDisplayName(
+            section
+          ).toLowerCase()} section`
         );
-        setSnackbarSeverity("success");
-        setSnackbarOpen(true);
-      })
-      .catch(() => {
-        setSnackbarMessage("Failed to copy");
         setSnackbarSeverity("error");
         setSnackbarOpen(true);
-      });
+        return;
+      }
+
+      await navigator.clipboard.writeText(content);
+      setSnackbarMessage(
+        `${getSectionDisplayName(section)} copied to clipboard!`
+      );
+      setSnackbarSeverity("success");
+      setSnackbarOpen(true);
+    } catch (error) {
+      console.error("Error copying section:", error);
+      setSnackbarMessage("Failed to copy");
+      setSnackbarSeverity("error");
+      setSnackbarOpen(true);
+    }
   };
 
-  const handleDownload = (
+  const handleDownload = async (
     section: "full" | "main" | "appendix" | "backmatter" | "allparts" = "full"
   ) => {
     // Special handling for "allparts" to download all three separate files
     if (section === "allparts") {
-      const mainContent = getSectionContent("main", true);
-      const appendixContent = getSectionContent("appendix", true);
-      const backmatterContent = getSectionContent("backmatter", true);
-      const baseFileName = sourceFile.name.replace(/\.[^/.]+$/, ""); // Remove extension
-      let downloadCount = 0;
-      let successCount = 0;
+      try {
+        // For allparts, we handle each section individually to prevent duplicate BibTeX
+        const mainContent = await getContentWithOptionalBibtex("main", true);
+        // For appendix and backmatter, we don't add BibTeX even if checkbox is checked
+        const appendixContent = getSectionContent("appendix", true);
+        const backmatterContent = getSectionContent("backmatter", true);
 
-      // Download main content (should always exist)
-      if (mainContent) {
-        downloadCount++;
-        const blob = new Blob([mainContent], { type: "text/markdown" });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = `${baseFileName}_main.md`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
-        successCount++;
+        const baseFileName = sourceFile.name.replace(/\.[^/.]+$/, ""); // Remove extension
+        let downloadCount = 0;
+        let successCount = 0;
+
+        // Download main content (should always exist)
+        if (mainContent) {
+          downloadCount++;
+          const blob = new Blob([mainContent], { type: "text/markdown" });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = `${baseFileName}_main.md`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+          successCount++;
+        }
+
+        // Download appendix if it exists
+        if (appendixContent) {
+          downloadCount++;
+          const blob = new Blob([appendixContent], { type: "text/markdown" });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = `${baseFileName}_appendix.md`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+          successCount++;
+        }
+
+        // Download backmatter if it exists
+        if (backmatterContent) {
+          downloadCount++;
+          const blob = new Blob([backmatterContent], { type: "text/markdown" });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = `${baseFileName}_backmatter.md`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+          successCount++;
+        }
+
+        // Show success message
+        setSnackbarMessage(
+          `${successCount} of ${downloadCount} parts downloaded successfully`
+        );
+        setSnackbarSeverity("success");
+        setSnackbarOpen(true);
+      } catch (error) {
+        console.error("Error downloading parts:", error);
+        setSnackbarMessage("Error downloading document parts");
+        setSnackbarSeverity("error");
+        setSnackbarOpen(true);
       }
-
-      // Download appendix if it exists
-      if (appendixContent) {
-        downloadCount++;
-        const blob = new Blob([appendixContent], { type: "text/markdown" });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = `${baseFileName}_appendix.md`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
-        successCount++;
-      }
-
-      // Download backmatter if it exists
-      if (backmatterContent) {
-        downloadCount++;
-        const blob = new Blob([backmatterContent], { type: "text/markdown" });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = `${baseFileName}_backmatter.md`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
-        successCount++;
-      }
-
-      // Show success message
-      setSnackbarMessage(
-        `${successCount} of ${downloadCount} parts downloaded successfully`
-      );
-      setSnackbarSeverity("success");
-      setSnackbarOpen(true);
       return;
     }
 
     // Regular download handling for other section types
-    const contentToDownload = getSectionContent(section, true);
-    let sectionName = "";
-    const sectionDisplayName = getSectionDisplayName(section);
-
-    if (!contentToDownload) {
-      setSnackbarMessage(
-        `This document does not contain a ${sectionDisplayName.toLowerCase()} section`
+    try {
+      const contentToDownload = await getContentWithOptionalBibtex(
+        section,
+        true
       );
+      let sectionName = "";
+      const sectionDisplayName = getSectionDisplayName(section);
+
+      if (!contentToDownload) {
+        setSnackbarMessage(
+          `This document does not contain a ${sectionDisplayName.toLowerCase()} section`
+        );
+        setSnackbarSeverity("error");
+        setSnackbarOpen(true);
+        return;
+      }
+
+      // Add section suffix to filename
+      if (section !== "full") {
+        sectionName = `-${section}`;
+      }
+
+      const blob = new Blob([contentToDownload], { type: "text/markdown" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+
+      // Create a filename based on the source file and section
+      const baseFileName = sourceFile.name.replace(/\.[^/.]+$/, ""); // Remove extension
+      link.download = `${baseFileName}${sectionName}.md`;
+
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      // Show success message
+      setSnackbarMessage(`${sectionDisplayName} downloaded successfully`);
+      setSnackbarSeverity("success");
+      setSnackbarOpen(true);
+    } catch (error) {
+      console.error("Error downloading content:", error);
+      setSnackbarMessage("Error downloading content");
       setSnackbarSeverity("error");
       setSnackbarOpen(true);
-      return;
     }
-
-    // Add section suffix to filename
-    if (section !== "full") {
-      sectionName = `-${section}`;
-    }
-
-    const blob = new Blob([contentToDownload], { type: "text/markdown" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-
-    // Create a filename based on the source file and section
-    const baseFileName = sourceFile.name.replace(/\.[^/.]+$/, ""); // Remove extension
-    link.download = `${baseFileName}${sectionName}.md`;
-
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-
-    // Show success message
-    setSnackbarMessage(`${sectionDisplayName} downloaded successfully`);
-    setSnackbarSeverity("success");
-    setSnackbarOpen(true);
   };
 
   const formatTimestamp = (isoString: string): string => {
@@ -542,17 +621,41 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
-          mb: 3,
+          mb: 1,
         }}
       >
-        <Typography
-          variant="h5"
-          component="h2"
-          sx={{ display: "flex", alignItems: "center" }}
-        >
-          <MarkdownIcon sx={{ mr: 1 }} />
-          Converted Markdown
-        </Typography>
+        <Box sx={{ display: "flex", flexDirection: "column" }}>
+          <Typography
+            variant="h5"
+            component="h2"
+            sx={{ display: "flex", alignItems: "center" }}
+          >
+            <MarkdownIcon sx={{ mr: 1 }} />
+            Converted Markdown
+          </Typography>
+
+          {/* Add BibTeX Checkbox */}
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={includeBibtex}
+                onChange={handleBibtexChange}
+                disabled={isBibtexLoading}
+              />
+            }
+            label={
+              <Box sx={{ display: "flex", alignItems: "center" }}>
+                <CitationIcon fontSize="small" sx={{ mr: 0.5 }} />
+                <Typography variant="body2">Add BibTeX citation</Typography>
+                {isBibtexLoading && (
+                  <CircularProgress size={16} sx={{ ml: 1 }} />
+                )}
+              </Box>
+            }
+            sx={{ mt: 0.5 }}
+          />
+        </Box>
+
         <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
           {/* Full Document Actions */}
           <Box>
@@ -568,6 +671,7 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
                 startIcon={<CopyIcon />}
                 onClick={handleCopyToClipboard}
                 size="small"
+                disabled={isBibtexLoading}
               >
                 Copy All
               </Button>
@@ -577,6 +681,7 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
                 startIcon={<DownloadIcon />}
                 onClick={() => handleDownload("full")}
                 size="small"
+                disabled={isBibtexLoading}
               >
                 Download All
               </Button>
@@ -607,6 +712,7 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
                 onClick={handleCopyMenuOpen}
                 size="small"
                 startIcon={<CopyIcon />}
+                disabled={isBibtexLoading}
               >
                 Copy
               </Button>
@@ -701,6 +807,7 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
                 onClick={handleDownloadMenuOpen}
                 size="small"
                 startIcon={<DownloadIcon />}
+                disabled={isBibtexLoading}
               >
                 Download
               </Button>
