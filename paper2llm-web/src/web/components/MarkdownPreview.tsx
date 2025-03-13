@@ -27,8 +27,6 @@ import {
   MenuItem,
   ListItemButton,
   Tooltip,
-  Select,
-  SelectChangeEvent,
 } from "@mui/material";
 import {
   ContentCopy as CopyIcon,
@@ -47,6 +45,8 @@ import {
   Subject as MainContentIcon,
   BookmarkBorder as AppendixIcon,
   Info as BackmatterIcon,
+  MoreVert as MoreIcon,
+  ViewModule as AllPartsIcon,
 } from "@mui/icons-material";
 import { PdfToMdResult } from "../../types/interfaces";
 import {
@@ -94,9 +94,8 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
   const [snackbarSeverity, setSnackbarSeverity] = useState<"success" | "error">(
     "success"
   );
-  const [selectedSection, setSelectedSection] = useState<
-    "main" | "appendix" | "backmatter"
-  >("main");
+  const [copyAnchorEl, setCopyAnchorEl] = useState<null | HTMLElement>(null);
+  const [downloadAnchorEl, setDownloadAnchorEl] = useState<null | HTMLElement>(null);
   const [markdownSections, setMarkdownSections] =
     useState<MarkdownSections | null>(null);
   const [sectionMetadata, setSectionMetadata] =
@@ -152,18 +151,24 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
     setSnackbarOpen(false);
   };
 
-  const handleSectionChange = (section: "main" | "appendix" | "backmatter") => {
-    setSelectedSection(section);
+  const handleCopyMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
+    setCopyAnchorEl(event.currentTarget);
   };
 
-  const handleSelectChange = (event: SelectChangeEvent<string>) => {
-    handleSectionChange(
-      event.target.value as "main" | "appendix" | "backmatter"
-    );
+  const handleCopyMenuClose = () => {
+    setCopyAnchorEl(null);
+  };
+
+  const handleDownloadMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
+    setDownloadAnchorEl(event.currentTarget);
+  };
+
+  const handleDownloadMenuClose = () => {
+    setDownloadAnchorEl(null);
   };
 
   const getSectionContent = (
-    section: "full" | "main" | "appendix" | "backmatter",
+    section: "full" | "main" | "appendix" | "backmatter" | "allparts",
     addTitle: boolean = false
   ): string | null => {
     if (!markdownSections) return null;
@@ -181,6 +186,35 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
         break;
       case "backmatter":
         content = markdownSections.backmatter;
+        break;
+      case "allparts":
+        // Get all parts with titles and concatenate them
+        const parts: string[] = [];
+        
+        // Add main content first (always present)
+        if (markdownSections.mainContent) {
+          parts.push(markdownSections.mainContent);
+        }
+        
+        // Add appendix if present
+        if (markdownSections.appendix) {
+          const title = markdownSections.title;
+          const appendixContent = addTitle 
+            ? `# ${title} - Appendix\n\n---\n\n${markdownSections.appendix}`
+            : markdownSections.appendix;
+          parts.push(appendixContent);
+        }
+        
+        // Add backmatter if present
+        if (markdownSections.backmatter) {
+          const title = markdownSections.title;
+          const backmatterContent = addTitle 
+            ? `# ${title} - Backmatter\n\n---\n\n${markdownSections.backmatter}`
+            : markdownSections.backmatter;
+          parts.push(backmatterContent);
+        }
+        
+        content = parts.join("\n\n");
         break;
       default:
         return null;
@@ -200,7 +234,7 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
   };
 
   const getSectionDisplayName = (
-    section: "full" | "main" | "appendix" | "backmatter"
+    section: "full" | "main" | "appendix" | "backmatter" | "allparts"
   ): string => {
     switch (section) {
       case "full":
@@ -211,18 +245,20 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
         return "Appendix";
       case "backmatter":
         return "Backmatter";
+      case "allparts":
+        return "All Parts";
       default:
         return "Document";
     }
   };
 
-  const handleCopySection = () => {
-    const content = getSectionContent(selectedSection, true);
+  const handleCopySection = (section: "main" | "appendix" | "backmatter" | "allparts") => {
+    const content = getSectionContent(section, true);
 
     if (!content) {
       setSnackbarMessage(
         `This document does not contain a ${getSectionDisplayName(
-          selectedSection
+          section
         ).toLowerCase()} section`
       );
       setSnackbarSeverity("error");
@@ -234,7 +270,7 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
       .writeText(content)
       .then(() => {
         setSnackbarMessage(
-          `${getSectionDisplayName(selectedSection)} copied to clipboard!`
+          `${getSectionDisplayName(section)} copied to clipboard!`
         );
         setSnackbarSeverity("success");
         setSnackbarOpen(true);
@@ -247,8 +283,70 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
   };
 
   const handleDownload = (
-    section: "full" | "main" | "appendix" | "backmatter" = "full"
+    section: "full" | "main" | "appendix" | "backmatter" | "allparts" = "full"
   ) => {
+    // Special handling for "allparts" to download all three separate files
+    if (section === "allparts") {
+      const mainContent = getSectionContent("main", true);
+      const appendixContent = getSectionContent("appendix", true);
+      const backmatterContent = getSectionContent("backmatter", true);
+      const baseFileName = sourceFile.name.replace(/\.[^/.]+$/, ""); // Remove extension
+      let downloadCount = 0;
+      let successCount = 0;
+      
+      // Download main content (should always exist)
+      if (mainContent) {
+        downloadCount++;
+        const blob = new Blob([mainContent], { type: "text/markdown" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `${baseFileName}-main.md`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        successCount++;
+      }
+      
+      // Download appendix if it exists
+      if (appendixContent) {
+        downloadCount++;
+        const blob = new Blob([appendixContent], { type: "text/markdown" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `${baseFileName}-appendix.md`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        successCount++;
+      }
+      
+      // Download backmatter if it exists
+      if (backmatterContent) {
+        downloadCount++;
+        const blob = new Blob([backmatterContent], { type: "text/markdown" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `${baseFileName}-backmatter.md`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        successCount++;
+      }
+      
+      // Show success message
+      setSnackbarMessage(`${successCount} of ${downloadCount} parts downloaded successfully`);
+      setSnackbarSeverity("success");
+      setSnackbarOpen(true);
+      return;
+    }
+    
+    // Regular download handling for other section types
     const contentToDownload = getSectionContent(section, true);
     let sectionName = "";
     const sectionDisplayName = getSectionDisplayName(section);
@@ -483,7 +581,7 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
             </Stack>
           </Box>
 
-          {/* Document Parts Section Selector */}
+          {/* Document Parts Dropdown Buttons */}
           <Box>
             <Typography
               variant="subtitle2"
@@ -492,87 +590,188 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
               Document Parts
             </Typography>
             <Stack direction="row" spacing={1} alignItems="center">
-              <Box sx={{ minWidth: 200 }}>
-                <Select
-                  value={selectedSection}
-                  onChange={handleSelectChange}
-                  size="small"
-                  fullWidth
-                  sx={{ height: 36 }}
-                  // Custom rendering of the selected value to show only the name
-                  renderValue={(selected) => {
-                    const sectionName = selected as string;
-                    return getSectionDisplayName(
-                      sectionName as "main" | "appendix" | "backmatter"
-                    );
-                  }}
-                >
-                  <MenuItem value="main">
-                    <ListItemIcon>
-                      <MainContentIcon fontSize="small" />
-                    </ListItemIcon>
-                    <ListItemText
-                      primary="Main Content"
-                      secondary={
-                        sectionMetadata?.wordCount.mainContent
-                          ? `${sectionMetadata.wordCount.mainContent} words`
-                          : undefined
-                      }
-                    />
-                  </MenuItem>
-                  <MenuItem
-                    value="appendix"
-                    disabled={!sectionMetadata?.hasAppendix}
-                  >
-                    <ListItemIcon>
-                      <AppendixIcon fontSize="small" />
-                    </ListItemIcon>
-                    <ListItemText
-                      primary="Appendix"
-                      secondary={
-                        sectionMetadata?.hasAppendix &&
-                        sectionMetadata?.wordCount.appendix
-                          ? `${sectionMetadata.wordCount.appendix} words`
-                          : "Not available"
-                      }
-                    />
-                  </MenuItem>
-                  <MenuItem
-                    value="backmatter"
-                    disabled={!sectionMetadata?.hasBackmatter}
-                  >
-                    <ListItemIcon>
-                      <BackmatterIcon fontSize="small" />
-                    </ListItemIcon>
-                    <ListItemText
-                      primary="Backmatter"
-                      secondary={
-                        sectionMetadata?.hasBackmatter &&
-                        sectionMetadata?.wordCount.backmatter
-                          ? `${sectionMetadata.wordCount.backmatter} words`
-                          : "Not available"
-                      }
-                    />
-                  </MenuItem>
-                </Select>
-              </Box>
               <Button
                 variant="outlined"
-                startIcon={<CopyIcon />}
-                onClick={handleCopySection}
+                endIcon={<DropDownIcon />}
+                onClick={handleCopyMenuOpen}
                 size="small"
+                startIcon={<CopyIcon />}
               >
                 Copy
               </Button>
+              <Menu
+                anchorEl={copyAnchorEl}
+                open={Boolean(copyAnchorEl)}
+                onClose={handleCopyMenuClose}
+              >
+                <MenuItem
+                  onClick={() => {
+                    handleCopySection("allparts");
+                    handleCopyMenuClose();
+                  }}
+                >
+                  <ListItemIcon>
+                    <AllPartsIcon fontSize="small" />
+                  </ListItemIcon>
+                  <ListItemText
+                    primary="All Parts"
+                    secondary={
+                      sectionMetadata?.wordCount.total
+                        ? `${sectionMetadata.wordCount.total} words total`
+                        : undefined
+                    }
+                  />
+                </MenuItem>
+                <Divider />
+                <MenuItem
+                  onClick={() => {
+                    handleCopySection("main");
+                    handleCopyMenuClose();
+                  }}
+                >
+                  <ListItemIcon>
+                    <MainContentIcon fontSize="small" />
+                  </ListItemIcon>
+                  <ListItemText
+                    primary="Main Content"
+                    secondary={
+                      sectionMetadata?.wordCount.mainContent
+                        ? `${sectionMetadata.wordCount.mainContent} words`
+                        : undefined
+                    }
+                  />
+                </MenuItem>
+                <MenuItem
+                  onClick={() => {
+                    handleCopySection("appendix");
+                    handleCopyMenuClose();
+                  }}
+                  disabled={!sectionMetadata?.hasAppendix}
+                >
+                  <ListItemIcon>
+                    <AppendixIcon fontSize="small" />
+                  </ListItemIcon>
+                  <ListItemText
+                    primary="Appendix"
+                    secondary={
+                      sectionMetadata?.hasAppendix &&
+                      sectionMetadata?.wordCount.appendix
+                        ? `${sectionMetadata.wordCount.appendix} words`
+                        : "Not available"
+                    }
+                  />
+                </MenuItem>
+                <MenuItem
+                  onClick={() => {
+                    handleCopySection("backmatter");
+                    handleCopyMenuClose();
+                  }}
+                  disabled={!sectionMetadata?.hasBackmatter}
+                >
+                  <ListItemIcon>
+                    <BackmatterIcon fontSize="small" />
+                  </ListItemIcon>
+                  <ListItemText
+                    primary="Backmatter"
+                    secondary={
+                      sectionMetadata?.hasBackmatter &&
+                      sectionMetadata?.wordCount.backmatter
+                        ? `${sectionMetadata.wordCount.backmatter} words`
+                        : "Not available"
+                    }
+                  />
+                </MenuItem>
+              </Menu>
+
               <Button
                 variant="outlined"
                 color="secondary"
-                startIcon={<DownloadIcon />}
-                onClick={() => handleDownload(selectedSection)}
+                endIcon={<DropDownIcon />}
+                onClick={handleDownloadMenuOpen}
                 size="small"
+                startIcon={<DownloadIcon />}
               >
                 Download
               </Button>
+              <Menu
+                anchorEl={downloadAnchorEl}
+                open={Boolean(downloadAnchorEl)}
+                onClose={handleDownloadMenuClose}
+              >
+                <MenuItem
+                  onClick={() => {
+                    handleDownload("allparts");
+                    handleDownloadMenuClose();
+                  }}
+                >
+                  <ListItemIcon>
+                    <AllPartsIcon fontSize="small" />
+                  </ListItemIcon>
+                  <ListItemText
+                    primary="All Parts"
+                    secondary="Download all sections as separate files"
+                  />
+                </MenuItem>
+                <Divider />
+                <MenuItem
+                  onClick={() => {
+                    handleDownload("main");
+                    handleDownloadMenuClose();
+                  }}
+                >
+                  <ListItemIcon>
+                    <MainContentIcon fontSize="small" />
+                  </ListItemIcon>
+                  <ListItemText
+                    primary="Main Content"
+                    secondary={
+                      sectionMetadata?.wordCount.mainContent
+                        ? `${sectionMetadata.wordCount.mainContent} words`
+                        : undefined
+                    }
+                  />
+                </MenuItem>
+                <MenuItem
+                  onClick={() => {
+                    handleDownload("appendix");
+                    handleDownloadMenuClose();
+                  }}
+                  disabled={!sectionMetadata?.hasAppendix}
+                >
+                  <ListItemIcon>
+                    <AppendixIcon fontSize="small" />
+                  </ListItemIcon>
+                  <ListItemText
+                    primary="Appendix"
+                    secondary={
+                      sectionMetadata?.hasAppendix &&
+                      sectionMetadata?.wordCount.appendix
+                        ? `${sectionMetadata.wordCount.appendix} words`
+                        : "Not available"
+                    }
+                  />
+                </MenuItem>
+                <MenuItem
+                  onClick={() => {
+                    handleDownload("backmatter");
+                    handleDownloadMenuClose();
+                  }}
+                  disabled={!sectionMetadata?.hasBackmatter}
+                >
+                  <ListItemIcon>
+                    <BackmatterIcon fontSize="small" />
+                  </ListItemIcon>
+                  <ListItemText
+                    primary="Backmatter"
+                    secondary={
+                      sectionMetadata?.hasBackmatter &&
+                      sectionMetadata?.wordCount.backmatter
+                        ? `${sectionMetadata.wordCount.backmatter} words`
+                        : "Not available"
+                    }
+                  />
+                </MenuItem>
+              </Menu>
             </Stack>
           </Box>
         </Box>
@@ -731,7 +930,7 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
         <Tabs
           value={tabValue}
           onChange={handleTabChange}
-          aria-label="markdown view tabs"
+aria-label="markdown view tabs"
           indicatorColor="primary"
         >
           <Tab
