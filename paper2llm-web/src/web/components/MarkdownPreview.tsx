@@ -2,7 +2,7 @@
 // Features include syntax highlighting, copying, downloading, and metadata display.
 // Uses Material UI for modern styling and improved user experience.
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { 
   Box,
@@ -22,7 +22,11 @@ import {
   ListItem,
   ListItemIcon,
   ListItemText,
-  Grid
+  Grid,
+  Menu,
+  MenuItem,
+  ListItemButton,
+  Tooltip
 } from '@mui/material';
 import {
   ContentCopy as CopyIcon,
@@ -35,9 +39,15 @@ import {
   Code as CodeIcon,
   AutoStories as PageIcon,
   SmartToy as AIIcon,
-  Architecture as ModelIcon
+  Architecture as ModelIcon,
+  ArrowDropDown as DropDownIcon,
+  ArrowDownward as DownloadSectionIcon,
+  Subject as MainContentIcon,
+  BookmarkBorder as AppendixIcon,
+  Info as BackmatterIcon
 } from '@mui/icons-material';
 import { PdfToMdResult } from '../../types/interfaces';
+import { splitMarkdownContent, MarkdownSections, getMarkdownSectionsMetadata, MarkdownSectionsMetadata } from '../../core/utils/markdown-splitter';
 
 interface MarkdownPreviewProps {
   result: PdfToMdResult | null;
@@ -79,6 +89,24 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [snackbarSeverity, setSnackbarSeverity] = useState<'success' | 'error'>('success');
+  const [downloadMenuAnchorEl, setDownloadMenuAnchorEl] = useState<null | HTMLElement>(null);
+  const [markdownSections, setMarkdownSections] = useState<MarkdownSections | null>(null);
+  const [sectionMetadata, setSectionMetadata] = useState<MarkdownSectionsMetadata | null>(null);
+  
+  // Parse the markdown into sections when the component renders or when the markdown changes
+  useEffect(() => {
+    if (result && result.markdown) {
+      try {
+        const sections = splitMarkdownContent(result.markdown);
+        setMarkdownSections(sections);
+        
+        const metadata = getMarkdownSectionsMetadata(result.markdown);
+        setSectionMetadata(metadata);
+      } catch (error) {
+        console.error('Error splitting markdown:', error);
+      }
+    }
+  }, [result]);
   
   if (!result) {
     return null;
@@ -111,20 +139,73 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
     setSnackbarOpen(false);
   };
   
-  const handleDownload = () => {
-    const blob = new Blob([markdown], { type: 'text/markdown' });
+  const handleDownloadMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
+    setDownloadMenuAnchorEl(event.currentTarget);
+  };
+  
+  const handleDownloadMenuClose = () => {
+    setDownloadMenuAnchorEl(null);
+  };
+  
+  const handleDownload = (section: 'full' | 'main' | 'appendix' | 'backmatter' = 'full') => {
+    let contentToDownload = markdown;
+    let sectionName = '';
+    let sectionDisplayName = 'Full document';
+    
+    if (section !== 'full' && markdownSections) {
+      switch (section) {
+        case 'main':
+          contentToDownload = markdownSections.mainContent;
+          sectionName = '-main';
+          sectionDisplayName = 'Main content';
+          break;
+        case 'appendix':
+          if (!markdownSections.appendix) {
+            setSnackbarMessage('This document does not contain an appendix section');
+            setSnackbarSeverity('error');
+            setSnackbarOpen(true);
+            handleDownloadMenuClose();
+            return;
+          }
+          contentToDownload = markdownSections.appendix;
+          sectionName = '-appendix';
+          sectionDisplayName = 'Appendix';
+          break;
+        case 'backmatter':
+          if (!markdownSections.backmatter) {
+            setSnackbarMessage('This document does not contain a backmatter section');
+            setSnackbarSeverity('error');
+            setSnackbarOpen(true);
+            handleDownloadMenuClose();
+            return;
+          }
+          contentToDownload = markdownSections.backmatter;
+          sectionName = '-backmatter';
+          sectionDisplayName = 'Backmatter';
+          break;
+      }
+    }
+    
+    const blob = new Blob([contentToDownload], { type: 'text/markdown' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
     
-    // Create a filename based on the source file
+    // Create a filename based on the source file and section
     const baseFileName = sourceFile.name.replace(/\.[^/.]+$/, ''); // Remove extension
-    link.download = `${baseFileName}.md`;
+    link.download = `${baseFileName}${sectionName}.md`;
     
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+    
+    // Show success message
+    setSnackbarMessage(`${sectionDisplayName} downloaded successfully`);
+    setSnackbarSeverity('success');
+    setSnackbarOpen(true);
+    
+    handleDownloadMenuClose();
   };
   
   const formatTimestamp = (isoString: string): string => {
@@ -275,15 +356,92 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
           >
             Copy
           </Button>
-          <Button
-            variant="outlined"
-            color="secondary"
-            startIcon={<DownloadIcon />}
-            onClick={handleDownload}
-            size="small"
-          >
-            Download
-          </Button>
+          <Box sx={{ position: 'relative' }}>
+            <Button
+              variant="outlined"
+              color="secondary"
+              startIcon={<DownloadIcon />}
+              endIcon={<DropDownIcon />}
+              onClick={handleDownloadMenuOpen}
+              size="small"
+              aria-controls="download-menu"
+              aria-haspopup="true"
+            >
+              Download
+            </Button>
+            <Menu
+              id="download-menu"
+              anchorEl={downloadMenuAnchorEl}
+              open={Boolean(downloadMenuAnchorEl)}
+              onClose={handleDownloadMenuClose}
+              anchorOrigin={{
+                vertical: 'bottom',
+                horizontal: 'right',
+              }}
+              transformOrigin={{
+                vertical: 'top',
+                horizontal: 'right',
+              }}
+            >
+              <MenuItem onClick={() => handleDownload('full')}>
+                <ListItemIcon>
+                  <DownloadIcon fontSize="small" />
+                </ListItemIcon>
+                <ListItemText primary="Full Document" />
+              </MenuItem>
+              <MenuItem onClick={() => handleDownload('main')}>
+                <ListItemIcon>
+                  <MainContentIcon fontSize="small" />
+                </ListItemIcon>
+                <ListItemText 
+                  primary="Main Content Only" 
+                  secondary={sectionMetadata?.wordCount.mainContent 
+                    ? `${sectionMetadata.wordCount.mainContent} words` 
+                    : undefined}
+                />
+              </MenuItem>
+              <Tooltip title={!sectionMetadata?.hasAppendix 
+                ? "This document doesn't contain an appendix" 
+                : "Download only the appendix section"}>
+                <Box>
+                  <MenuItem 
+                    onClick={() => handleDownload('appendix')}
+                    disabled={!sectionMetadata?.hasAppendix}
+                  >
+                    <ListItemIcon>
+                      <AppendixIcon fontSize="small" />
+                    </ListItemIcon>
+                    <ListItemText 
+                      primary="Appendix Only" 
+                      secondary={sectionMetadata?.wordCount.appendix 
+                        ? `${sectionMetadata.wordCount.appendix} words` 
+                        : undefined}
+                    />
+                  </MenuItem>
+                </Box>
+              </Tooltip>
+              <Tooltip title={!sectionMetadata?.hasBackmatter 
+                ? "This document doesn't contain backmatter" 
+                : "Download only the backmatter section (acknowledgments, author contributions, etc.)"}>
+                <Box>
+                  <MenuItem 
+                    onClick={() => handleDownload('backmatter')}
+                    disabled={!sectionMetadata?.hasBackmatter}
+                  >
+                    <ListItemIcon>
+                      <BackmatterIcon fontSize="small" />
+                    </ListItemIcon>
+                    <ListItemText 
+                      primary="Backmatter Only" 
+                      secondary={sectionMetadata?.wordCount.backmatter 
+                        ? `${sectionMetadata.wordCount.backmatter} words` 
+                        : undefined}
+                    />
+                  </MenuItem>
+                </Box>
+              </Tooltip>
+            </Menu>
+          </Box>
           <Button
             variant="contained"
             color="primary"
@@ -300,6 +458,46 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
         variant="outlined" 
         sx={{ p: 2, mb: 3, bgcolor: 'background.default' }}
       >
+        {/* Add a new row to display section information */}
+        {sectionMetadata && (
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 'medium', color: 'text.secondary' }}>
+              Document Sections
+            </Typography>
+            <Stack direction="row" spacing={2} sx={{ flexWrap: 'wrap' }}>
+              <Chip 
+                icon={<MainContentIcon />} 
+                label={`Main Content (${sectionMetadata.wordCount.mainContent} words)`}
+                color="primary"
+                variant="outlined"
+                size="small"
+              />
+              {sectionMetadata.hasAppendix && (
+                <Chip 
+                  icon={<AppendixIcon />} 
+                  label={`Appendix (${sectionMetadata.wordCount.appendix} words)`}
+                  color="secondary"
+                  variant="outlined"
+                  size="small"
+                />
+              )}
+              {sectionMetadata.hasBackmatter && (
+                <Chip 
+                  icon={<BackmatterIcon />} 
+                  label={`Backmatter (${sectionMetadata.wordCount.backmatter} words)`}
+                  color="info"
+                  variant="outlined"
+                  size="small"
+                />
+              )}
+              <Chip 
+                label={`Total: ${sectionMetadata.wordCount.total} words`}
+                variant="outlined"
+                size="small"
+              />
+            </Stack>
+          </Box>
+        )}
         <Grid container spacing={2}>
           <Grid item xs={12} md={6}>
             <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 'medium', color: 'text.secondary' }}>
