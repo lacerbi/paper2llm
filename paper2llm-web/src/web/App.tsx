@@ -346,8 +346,6 @@ const App: React.FC = () => {
               />
             </Box>
 
-            <Divider sx={{ my: 3 }} />
-
             {isApiKeyValid.mistral && !conversionResult && (
               <Box mb={4}>
                 <FileUploader onFileSelected={handleFileSelected} />

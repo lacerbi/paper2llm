@@ -532,6 +532,7 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
       elevation={2}
       sx={{
         p: 3,
+        pt: 1,
         borderRadius: 2,
         overflow: "hidden",
       }}
