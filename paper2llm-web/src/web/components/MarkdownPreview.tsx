@@ -30,6 +30,7 @@ import {
   Checkbox,
   FormControlLabel,
   CircularProgress,
+  TextField,
 } from "@mui/material";
 import {
   ContentCopy as CopyIcon,
@@ -110,6 +111,10 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
     useState<MarkdownSectionsMetadata | null>(null);
   const [includeBibtex, setIncludeBibtex] = useState(false);
   const [isBibtexLoading, setIsBibtexLoading] = useState(false);
+  // Default base filename from source PDF (without extension)
+  const [baseFilename, setBaseFilename] = useState<string>("");
+  // Keep track of original filename to restore if user sets empty
+  const [originalFilename, setOriginalFilename] = useState<string>("");
 
   // Parse the markdown into sections when the component renders or when the markdown changes
   useEffect(() => {
@@ -120,6 +125,13 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
 
         const metadata = getMarkdownSectionsMetadata(result.markdown);
         setSectionMetadata(metadata);
+
+        // Set default filename from source file (without extension)
+        if (result.sourceFile && result.sourceFile.name) {
+          const defaultName = result.sourceFile.name.replace(/\.[^/.]+$/, "");
+          setBaseFilename(defaultName);
+          setOriginalFilename(defaultName);
+        }
       } catch (error) {
         console.error("Error splitting markdown:", error);
       }
@@ -362,7 +374,6 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
         const appendixContent = getSectionContent("appendix", true);
         const backmatterContent = getSectionContent("backmatter", true);
 
-        const baseFileName = sourceFile.name.replace(/\.[^/.]+$/, ""); // Remove extension
         let downloadCount = 0;
         let successCount = 0;
 
@@ -373,7 +384,7 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
           const url = URL.createObjectURL(blob);
           const link = document.createElement("a");
           link.href = url;
-          link.download = `${baseFileName}_main.md`;
+          link.download = `${baseFilename}_main.md`;
           document.body.appendChild(link);
           link.click();
           document.body.removeChild(link);
@@ -388,7 +399,7 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
           const url = URL.createObjectURL(blob);
           const link = document.createElement("a");
           link.href = url;
-          link.download = `${baseFileName}_appendix.md`;
+          link.download = `${baseFilename}_appendix.md`;
           document.body.appendChild(link);
           link.click();
           document.body.removeChild(link);
@@ -403,7 +414,7 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
           const url = URL.createObjectURL(blob);
           const link = document.createElement("a");
           link.href = url;
-          link.download = `${baseFileName}_backmatter.md`;
+          link.download = `${baseFilename}_backmatter.md`;
           document.body.appendChild(link);
           link.click();
           document.body.removeChild(link);
@@ -454,9 +465,8 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
       const link = document.createElement("a");
       link.href = url;
 
-      // Create a filename based on the source file and section
-      const baseFileName = sourceFile.name.replace(/\.[^/.]+$/, ""); // Remove extension
-      link.download = `${baseFileName}${sectionName}.md`;
+      // Use the user-defined baseFilename instead of sourceFile.name
+      link.download = `${baseFilename}${sectionName}.md`;
 
       document.body.appendChild(link);
       link.click();
@@ -634,6 +644,25 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
             <MarkdownIcon sx={{ mr: 1 }} />
             Converted Markdown
           </Typography>
+
+          {/* Add Filename Field */}
+          <TextField
+            label="Filename"
+            variant="outlined"
+            size="small"
+            value={baseFilename}
+            onChange={(e) => setBaseFilename(e.target.value)}
+            onBlur={() => {
+              // If user leaves the field empty, restore the original filename
+              if (!baseFilename.trim()) {
+                setBaseFilename(originalFilename);
+              }
+            }}
+            sx={{ mt: 1, mb: 1, width: "250px" }}
+            InputProps={{
+              endAdornment: <Typography variant="caption">.md</Typography>,
+            }}
+          />
 
           {/* Add BibTeX Checkbox */}
           <FormControlLabel
