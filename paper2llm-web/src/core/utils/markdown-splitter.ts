@@ -100,7 +100,15 @@ export function findSectionBoundaries(content: string): [number | null, number |
     /^#+\s+Impact\s+(Statement|statement)/mi,
     /^#+\s+Broader\s+(Impact|impact)/mi,
     /^#+\s+Societal\s+(Impact|impact)/mi,
-    /^#+\s+Ethical\s+(Considerations|considerations)/mi
+    /^#+\s+Ethical\s+(Considerations|considerations)/mi,
+    // Patterns for references/bibliography (common start of backmatter in academic papers)
+    /^#+\s+(References|Bibliography)\b/mi,
+    /^#+\s+Works\s+Cited\b/mi,
+    /^#+\s+Literature\s+Cited\b/mi,
+    /^#+\s+Citations?\b/mi,
+    /^#+\s+References\s+and\s+Notes\b/mi,
+    /^#+\s+References\s+Cited\b/mi,
+    /^#+\s+Cited\s+(Works|Literature)\b/mi
   ];
   
   // Match variations of appendix/supplementary sections (including lowercase variants)
