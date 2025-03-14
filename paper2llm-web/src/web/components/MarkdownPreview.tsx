@@ -457,7 +457,7 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
 
       // Add section suffix to filename
       if (section !== "full") {
-        sectionName = `-${section}`;
+        sectionName = `_${section}`;
       }
 
       const blob = new Blob([contentToDownload], { type: "text/markdown" });
