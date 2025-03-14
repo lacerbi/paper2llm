@@ -703,7 +703,7 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
                 size="small"
                 disabled={isBibtexLoading}
               >
-                Copy All
+                Copy Full
               </Button>
               <Button
                 variant="outlined"
@@ -713,7 +713,7 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
                 size="small"
                 disabled={isBibtexLoading}
               >
-                Download All
+                Download Full
               </Button>
               <Button
                 variant="contained"
