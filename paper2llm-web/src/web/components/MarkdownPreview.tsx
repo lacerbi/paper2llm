@@ -762,8 +762,8 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
                       component="p"
                       sx={{ fontStyle: "italic", mb: 1 }}
                     >
-                      Note: Sections are extracted automatically and the splits
-                      may be inaccurate.
+                      Sections are extracted automatically and the splits may be
+                      inaccurate.
                     </Typography>
                   </React.Fragment>
                 }
