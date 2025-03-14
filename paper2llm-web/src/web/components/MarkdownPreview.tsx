@@ -754,7 +754,7 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
                       peripheral information.
                     </Typography>
                     <Typography variant="body2" component="p">
-                      <b>All Parts:</b> The complete document with all sections
+                      <b>All Parts:</b> The complete document with all parts
                       combined.
                     </Typography>
                     <Typography
@@ -956,7 +956,7 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
                   </ListItemIcon>
                   <ListItemText
                     primary="All Parts"
-                    secondary="Download all sections as separate files"
+                    secondary="Download all parts as separate files"
                   />
                 </MenuItem>
               </Menu>
