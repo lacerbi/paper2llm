@@ -15,20 +15,20 @@ export const PROVIDER_INFO: Record<ApiProvider, ProviderApiKeyInfo> = {
   },
   gemini: {
     name: "Google Gemini",
-    description: "Optional, for enhanced vision capabilities",
+    description: "Optional, for enhanced text and vision capabilities",
     validationPattern: /^AI[A-Za-z0-9_-]{40,45}$/,
     docsUrl: "https://aistudio.google.com/app/apikey",
-  },
-  openai: {
-    name: "OpenAI",
-    description: "Optional, for enhanced vision capabilities",
-    validationPattern: /^sk-[A-Za-z0-9]{32,64}$/,
-    docsUrl: "https://platform.openai.com/api-keys",
   },
   anthropic: {
     name: "Anthropic",
     description: "Optional, for enhanced text and vision capabilities",
     validationPattern: /^sk-ant-[A-Za-z0-9-_]{24,}$/,
-    docsUrl: "https://docs.anthropic.com/en/docs/api-key",
+    docsUrl: "https://console.anthropic.com/settings/keys",
+  },
+  openai: {
+    name: "OpenAI",
+    description: "Optional, for enhanced text and vision capabilities",
+    validationPattern: /^sk-[A-Za-z0-9]{32,64}$/,
+    docsUrl: "https://platform.openai.com/api-keys",
   },
 };
