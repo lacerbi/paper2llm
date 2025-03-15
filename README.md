@@ -2,10 +2,18 @@
 
 Convert PDFs with a focus on academic papers into human-and-LLM-friendly **text-only Markdown files**.
 
+### Features
+
 - Text, tables and equations are parsed using [Mistral OCR](https://mistral.ai/en/news/mistral-ocr).
 - Figures are converted to a textual description using a selected vision model (see below).
+- Additional postprocessing is available, such as splitting the file into multiple parts (main, appendix, backmatter) and fetching a bibtex.
+
+### Requirements
+
 - You need a Mistral AI [API key](https://console.mistral.ai/api-keys) to use `paper2llm`. Their [free API tier](https://docs.mistral.ai/deployment/laplateforme/tier/) is compatible with `paper2llm`, within rate limits.
 - For the image-to-text conversion, multiple providers are supported.
+
+### Credits
 
 `paper2llm` was written by [Luigi Acerbi](https://lacerbi.github.io/) using [Claude 3.7 Sonnet](https://www.anthropic.com/news/claude-3-7-sonnet) and Athanor. 
 You can follow me on [X](https://x.com/AcerbiLuigi) and [Bluesky](https://bsky.app/profile/lacerbi.bsky.social).
@@ -18,7 +26,7 @@ After the OCR step, figures are converted to a Markdown text description using v
 - The free Mistral AI model, Pixtral 12B, is a fantastic model for its size, but might not be best suited for understanding complex diagrams and concepts.
 - [Pixtral Large](https://mistral.ai/en/news/pixtral-large) may work better, but you may need API credits. It's unclear if Pixtral Large is available on the free API tier - the API call is not rejected, but it might redirect to Pixtral 12B.
 - Gemini 2.0 Flash does a good job and is included in the [Gemini API free tier](https://ai.google.dev/gemini-api/docs/pricing) or otherwise very cheap.
-- Other premium models such as OpenAI's GPT-4o or Gemini 2.0 Pro might work better for complex figures, but beware of API costs.
+- Other premium models such as OpenAI's GPT-4o, Anthropic's Claude Sonnet 3.7 or Google Gemini 2.0 Pro might work better for complex figures, but beware of API costs.
 
 ## Disclaimers
 
