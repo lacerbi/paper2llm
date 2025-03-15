@@ -159,6 +159,25 @@ export function findSectionBoundaries(content: string): [number | null, number |
     }
   }
   
+  /**
+   * Checks if there's any non-whitespace content between a page marker and a section heading
+   * 
+   * @param content The content to check
+   * @param markerPos Position of the page marker
+   * @param headingPos Position of the section heading
+   * @returns true if there's non-whitespace content between markers, false otherwise
+   */
+  const hasContentBetweenMarkers = (content: string, markerPos: number, headingPos: number): boolean => {
+    // Extract content between markers
+    const contentBetween = content.substring(markerPos, headingPos).trim();
+    
+    // Split into lines and remove the first line (page marker)
+    const lines = contentBetween.split('\n').slice(1);
+    
+    // Check if any non-whitespace content exists
+    return lines.some(line => line.trim().length > 0);
+  };
+
   // Check for page markers before sections
   if (ackStart !== null) {
     // Look for page marker before backmatter section
@@ -168,10 +187,14 @@ export function findSectionBoundaries(content: string): [number | null, number |
     // Start from the end and look for page marker
     for (let i = linesBeforeAck.length - 1; i >= Math.max(0, linesBeforeAck.length - 5); i--) {
       if (pageMarkerPattern.test(linesBeforeAck[i])) {
-        // Found a page marker, adjust ackStart to include it
+        // Found a page marker
         const linePos = contentBeforeAck.lastIndexOf(linesBeforeAck[i]);
         if (linePos >= 0) {
-          ackStart = linePos;
+          // Only include the page marker with backmatter if there's no content between
+          // the page marker and the backmatter heading
+          if (!hasContentBetweenMarkers(content, linePos, ackStart)) {
+            ackStart = linePos;
+          }
         }
         break;
       }
@@ -186,10 +209,14 @@ export function findSectionBoundaries(content: string): [number | null, number |
     // Start from the end and look for page marker
     for (let i = linesBeforeAppendix.length - 1; i >= Math.max(0, linesBeforeAppendix.length - 5); i--) {
       if (pageMarkerPattern.test(linesBeforeAppendix[i])) {
-        // Found a page marker, adjust appendixStart to include it
+        // Found a page marker
         const linePos = contentBeforeAppendix.lastIndexOf(linesBeforeAppendix[i]);
         if (linePos >= 0) {
-          appendixStart = linePos;
+          // Only include the page marker with appendix if there's no content between
+          // the page marker and the appendix heading
+          if (!hasContentBetweenMarkers(content, linePos, appendixStart)) {
+            appendixStart = linePos;
+          }
         }
         break;
       }
@@ -217,7 +244,11 @@ export function findSectionBoundaries(content: string): [number | null, number |
             if (pageMarkerPattern.test(linesBeforeNewAck[i])) {
               const linePos = contentBeforeNewAck.lastIndexOf(linesBeforeNewAck[i]);
               if (linePos >= 0) {
-                ackStart = linePos;
+                // Only include the page marker with backmatter if there's no content between
+                // the page marker and the backmatter heading
+                if (!hasContentBetweenMarkers(content, linePos, ackStart)) {
+                  ackStart = linePos;
+                }
               }
               break;
             }

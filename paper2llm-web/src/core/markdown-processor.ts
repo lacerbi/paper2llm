@@ -85,6 +85,105 @@ export class MarkdownProcessor {
    * @param options Formatting options for the descriptions
    * @returns Enhanced markdown with image descriptions
    */
+  /**
+   * Ensures proper spacing around image description blocks and figure captions in markdown
+   *
+   * @param markdown The markdown content to process
+   * @returns Processed markdown with proper spacing around image descriptions and figure captions
+   */
+  private ensureImageDescriptionSpacing(markdown: string): string {
+    if (!markdown) {
+      return markdown;
+    }
+
+    // Split the markdown into lines to process it line by line
+    const lines = markdown.split("\n");
+    let result = [];
+    let inImageBlock = false;
+    let afterImageBlock = false; // New state variable to track if we're after an image block
+    let i = 0;
+
+    while (i < lines.length) {
+      const line = lines[i];
+
+      // Check if this line starts a new image description block
+      if (
+        !inImageBlock &&
+        line.match(/^> \*\*(?:Image description|Image Description|Image)\.\*\*/)
+      ) {
+        // We found the start of an image block
+        inImageBlock = true;
+        afterImageBlock = false; // Reset since we're entering a new block
+
+        // Ensure there's an empty line before (unless at the beginning of the document)
+        if (i > 0 && result.length > 0 && result[result.length - 1] !== "") {
+          result.push("");
+        }
+
+        // Add the current line
+        result.push(line);
+      }
+      // Check if we're in an image block and the current line is part of it
+      else if (inImageBlock && line.startsWith(">")) {
+        // Continue the image block
+        result.push(line);
+      }
+      // Check if we're exiting an image block
+      else if (inImageBlock) {
+        // End of image block
+        inImageBlock = false;
+        afterImageBlock = true; // Mark that we just exited an image block
+
+        // Ensure there's an empty line after the block
+        if (line !== "") {
+          result.push("");
+        }
+
+        // Add the current line (unless it's already an empty line)
+        if (line !== "") {
+          result.push(line);
+        }
+      }
+      // Check for figure captions after image blocks (with possible empty lines in between)
+      else if (afterImageBlock && line.match(/^Figure /)) {
+        // This is a figure caption after an image block
+
+        // Ensure there's an empty line before the figure caption
+        if (result.length > 0 && result[result.length - 1] !== "") {
+          result.push("");
+        }
+
+        // Add the figure caption
+        result.push(line);
+
+        // Ensure there's an empty line after the figure caption
+        if (i < lines.length - 1 && lines[i + 1] !== "") {
+          result.push("");
+        }
+      }
+      else {
+        // Regular line, not part of an image block or figure caption
+        result.push(line);
+        
+        // If this is a non-empty line and not a figure caption, 
+        // we're no longer right after an image block
+        if (line !== "" && !line.match(/^Figure /)) {
+          afterImageBlock = false;
+        }
+      }
+
+      i++;
+    }
+
+    // If the document ends with an image block, ensure there's an empty line after
+    if (inImageBlock) {
+      result.push("");
+    }
+
+    // Join the lines back into a single string
+    return result.join("\n");
+  }
+
   public enhanceImageReferences(
     markdown: string,
     imageDescriptions: Map<string, string>,
@@ -93,7 +192,10 @@ export class MarkdownProcessor {
     try {
       // If no image descriptions provided and we're not in the special "no descriptions" mode,
       // return original markdown
-      if ((!imageDescriptions || imageDescriptions.size === 0) && !options.replaceImagesWithPlaceholder) {
+      if (
+        (!imageDescriptions || imageDescriptions.size === 0) &&
+        !options.replaceImagesWithPlaceholder
+      ) {
         if (options.debugMode) {
           console.log(
             "No image descriptions provided, returning original markdown"
@@ -181,15 +283,15 @@ export class MarkdownProcessor {
 
         // Format replacement based on whether we have a description or not
         let replacement = "";
-        
+
         if (description) {
           // Post-process the description: only trim leading and trailing whitespace
           // but preserve internal newlines for formatting
           const trimmedDescription = description.trim();
-          
+
           // Format the description as a proper markdown blockquote
           // Split by newlines, prefix each line with "> ", and add the header to the first line
-          const lines = trimmedDescription.split('\n');
+          const lines = trimmedDescription.split("\n");
           const formattedLines = lines.map((line, index) => {
             if (index === 0) {
               // Add the header to the first line
@@ -198,9 +300,9 @@ export class MarkdownProcessor {
               return `> ${line}`;
             }
           });
-          
+
           // Join the lines back together with newlines
-          const formattedDescription = formattedLines.join('\n');
+          const formattedDescription = formattedLines.join("\n");
 
           // Format the replacement based on options
           let replacement = "";
@@ -225,19 +327,22 @@ export class MarkdownProcessor {
           // If no description is available and we're in placeholder mode,
           // replace with the default placeholder text
           replacement = "> **Image.** [not displayed]\n";
-          
+
           if (options.debugMode) {
             console.log(
               `No description found for image: ${imageId}, using placeholder text`
             );
           }
-          
+
           // Replace the image reference with the placeholder
           enhancedMarkdown = enhancedMarkdown.replace(match.full, replacement);
         } else if (options.debugMode) {
           console.log(`No description found for image: ${imageId}`);
         }
       }
+
+      // Apply spacing fixes to the enhanced markdown
+      enhancedMarkdown = this.ensureImageDescriptionSpacing(enhancedMarkdown);
 
       return enhancedMarkdown;
     } catch (error) {
