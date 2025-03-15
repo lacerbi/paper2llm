@@ -65,6 +65,7 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
     copySection,
     download,
     handleBibtexChange,
+    retryBibtexGeneration,
     setBaseFilename,
   } = useCopyDownload({
     markdown: result?.markdown || "",
@@ -131,6 +132,7 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
             includeBibtex={includeBibtex}
             isBibtexLoading={isBibtexLoading}
             onBibtexChange={handleBibtexChange}
+            onBibtexRetry={retryBibtexGeneration}
             bibtexAvailable={Boolean(result?.bibtex)}
             result={result}
           />

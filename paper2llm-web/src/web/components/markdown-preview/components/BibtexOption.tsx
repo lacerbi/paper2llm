@@ -10,12 +10,14 @@ import {
   FormControlLabel,
   CircularProgress,
   Tooltip,
+  IconButton,
 } from "@mui/material";
 import {
   MenuBook as CitationIcon,
   CheckCircle as AvailableIcon,
   ErrorOutline as ErrorIcon,
   Warning as WarningIcon,
+  Refresh as RetryIcon,
 } from "@mui/icons-material";
 import {
   PdfToMdResult,
@@ -26,6 +28,7 @@ interface BibtexOptionProps {
   includeBibtex: boolean;
   isBibtexLoading: boolean;
   onBibtexChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  onBibtexRetry?: () => void;
   bibtexAvailable?: boolean;
   result?: PdfToMdResult | null;
 }
@@ -76,6 +79,7 @@ const BibtexOption: React.FC<BibtexOptionProps> = ({
   includeBibtex,
   isBibtexLoading,
   onBibtexChange,
+  onBibtexRetry,
   bibtexAvailable = false,
   result,
 }) => {
@@ -148,15 +152,29 @@ const BibtexOption: React.FC<BibtexOptionProps> = ({
               </Tooltip>
             )}
 
-          {/* Error indicator */}
+          {/* Error indicator with retry button */}
           {!isBibtexLoading && bibtexStatus === "failed" && (
-            <Tooltip title="BibTeX generation failed - a mock citation will be used as fallback. Trying again may also work.">
-              <ErrorIcon
-                fontSize="small"
-                color="error"
-                sx={{ ml: 1, fontSize: 16 }}
-              />
-            </Tooltip>
+            <>
+              <Tooltip title="BibTeX generation failed - a mock citation will be used as fallback">
+                <ErrorIcon
+                  fontSize="small"
+                  color="error"
+                  sx={{ ml: 1, fontSize: 16 }}
+                />
+              </Tooltip>
+              {onBibtexRetry && (
+                <Tooltip title="Retry BibTeX generation">
+                  <IconButton 
+                    size="small" 
+                    color="primary" 
+                    onClick={onBibtexRetry}
+                    sx={{ ml: 0.5, p: 0.5 }}
+                  >
+                    <RetryIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              )}
+            </>
           )}
         </Box>
       }

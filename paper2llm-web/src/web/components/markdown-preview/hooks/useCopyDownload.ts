@@ -3,16 +3,19 @@
 
 import { useState } from "react";
 import { MarkdownSections } from "../../../../core/utils/markdown-splitter";
-import { PdfToMdResult, BibTeXTitleValidation } from "../../../../types/interfaces";
-import { generateBibTeXFromMarkdown, BibTeXGenerationResult } from "../../../../core/utils/bibtex-generator";
-import { 
-  SectionType,
-  SnackbarSeverity
-} from "../types";
-import { 
+import {
+  PdfToMdResult,
+  BibTeXTitleValidation,
+} from "../../../../types/interfaces";
+import {
+  generateBibTeXFromMarkdown,
+  BibTeXGenerationResult,
+} from "../../../../core/utils/bibtex-generator";
+import { SectionType, SnackbarSeverity } from "../types";
+import {
   getContentWithOptionalBibtex,
   getSectionContent,
-  getSectionDisplayName
+  getSectionDisplayName,
 } from "../utils/content-utils";
 
 interface CopyDownloadHookParams {
@@ -38,9 +41,12 @@ interface CopyDownloadHookResult {
   openDownloadMenu: (event: React.MouseEvent<HTMLElement>) => void;
   closeDownloadMenu: () => void;
   copyToClipboard: () => Promise<void>;
-  copySection: (section: "main" | "appendix" | "backmatter" | "allparts") => Promise<void>;
+  copySection: (
+    section: "main" | "appendix" | "backmatter" | "allparts"
+  ) => Promise<void>;
   download: (section?: SectionType) => Promise<void>;
   handleBibtexChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  retryBibtexGeneration: () => Promise<void>;
   setBaseFilename: (filename: string) => void;
 }
 
@@ -51,20 +57,24 @@ export const useCopyDownload = ({
   markdown,
   markdownSections,
   sourceFilename,
-  result
+  result,
 }: CopyDownloadHookParams): CopyDownloadHookResult => {
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState("");
-  const [snackbarSeverity, setSnackbarSeverity] = useState<SnackbarSeverity>("success");
+  const [snackbarSeverity, setSnackbarSeverity] =
+    useState<SnackbarSeverity>("success");
   const [copyAnchorEl, setCopyAnchorEl] = useState<null | HTMLElement>(null);
-  const [downloadAnchorEl, setDownloadAnchorEl] = useState<null | HTMLElement>(null);
+  const [downloadAnchorEl, setDownloadAnchorEl] = useState<null | HTMLElement>(
+    null
+  );
   const [includeBibtex, setIncludeBibtex] = useState(false);
   const [isBibtexLoading, setIsBibtexLoading] = useState(false);
-  
+
   // Default base filename from source PDF (without extension)
   const defaultFilename = sourceFilename.replace(/\.[^/.]+$/, "");
   const [baseFilename, setBaseFilename] = useState<string>(defaultFilename);
-  const [originalFilename, setOriginalFilename] = useState<string>(defaultFilename);
+  const [originalFilename, setOriginalFilename] =
+    useState<string>(defaultFilename);
 
   // Initialize the filenames from the source filename when it changes
   if (defaultFilename !== originalFilename) {
@@ -98,60 +108,76 @@ export const useCopyDownload = ({
     setDownloadAnchorEl(null);
   };
 
-  const handleBibtexChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  /**
+   * Attempts to regenerate BibTeX citation
+   */
+  const retryBibtexGeneration = async () => {
+    if (!result || !markdown) return;
+
+    setIsBibtexLoading(true);
+    setSnackbarMessage("Attempting to retrieve BibTeX citation...");
+    setSnackbarSeverity("info");
+    setSnackbarOpen(true);
+
+    try {
+      // Try to generate BibTeX from markdown content
+      const generationResult: BibTeXGenerationResult =
+        await generateBibTeXFromMarkdown(markdown);
+
+      // Update the result object with the new bibtex and validation info
+      if (generationResult.bibtex && generationResult.bibtex.length > 0) {
+        result.bibtex = generationResult.bibtex;
+        result.bibtexTitleValidation = generationResult.titleValidation;
+
+        // Show appropriate message based on title validation
+        if (
+          generationResult.titleValidation &&
+          !generationResult.titleValidation.matches
+        ) {
+          setSnackbarMessage(
+            "A BibTeX entry was retrieved, but title may not match paper"
+          );
+          setSnackbarSeverity("warning");
+        } else {
+          setSnackbarMessage("BibTeX citation retrieved successfully");
+          setSnackbarSeverity("success");
+        }
+      } else {
+        setSnackbarMessage("BibTeX retrieval failed - using fallback citation");
+        setSnackbarSeverity("error");
+
+        // Store validation info even for mock entries
+        if (generationResult.titleValidation) {
+          result.bibtexTitleValidation = generationResult.titleValidation;
+        }
+      }
+    } catch (error) {
+      console.error("Error regenerating BibTeX:", error);
+      setSnackbarMessage("BibTeX retrieval failed - using fallback citation");
+      setSnackbarSeverity("error");
+    } finally {
+      setIsBibtexLoading(false);
+      setSnackbarOpen(true);
+    }
+  };
+
+  const handleBibtexChange = async (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
     const isChecked = event.target.checked;
     setIncludeBibtex(isChecked);
 
     // If checkbox is being checked and we have a failed bibtex generation, try again
     if (isChecked) {
-      if (result?.bibtex === '') {
+      if (result?.bibtex === "") {
         // Previous generation failed, try regenerating
-        setIsBibtexLoading(true);
-        setSnackbarMessage(
-          "Attempting to regenerate BibTeX citation..."
-        );
-        setSnackbarSeverity("info");
-        setSnackbarOpen(true);
-        
-        try {
-          // Try to generate BibTeX from markdown content
-          if (result && markdown) {
-            const generationResult: BibTeXGenerationResult = await generateBibTeXFromMarkdown(markdown);
-            
-            // Update the result object with the new bibtex and validation info
-            if (generationResult.bibtex && generationResult.bibtex.length > 0) {
-              result.bibtex = generationResult.bibtex;
-              result.bibtexTitleValidation = generationResult.titleValidation;
-              
-              // Show appropriate message based on title validation
-              if (generationResult.titleValidation && !generationResult.titleValidation.matches) {
-                setSnackbarMessage("BibTeX regenerated successfully, but title may not match paper");
-                setSnackbarSeverity("warning");
-              } else {
-                setSnackbarMessage("BibTeX citation regenerated successfully");
-                setSnackbarSeverity("success");
-              }
-            } else {
-              setSnackbarMessage("BibTeX regeneration failed - using fallback citation");
-              setSnackbarSeverity("error");
-              
-              // Store validation info even for mock entries
-              if (generationResult.titleValidation) {
-                result.bibtexTitleValidation = generationResult.titleValidation;
-              }
-            }
-          }
-        } catch (error) {
-          console.error("Error regenerating BibTeX:", error);
-          setSnackbarMessage("BibTeX regeneration failed - using fallback citation");
-          setSnackbarSeverity("error");
-        } finally {
-          setIsBibtexLoading(false);
-          setSnackbarOpen(true);
-        }
+        await retryBibtexGeneration();
       } else {
         // Check for title mismatch and show appropriate message
-        if (result?.bibtexTitleValidation && !result.bibtexTitleValidation.matches) {
+        if (
+          result?.bibtexTitleValidation &&
+          !result.bibtexTitleValidation.matches
+        ) {
           setSnackbarMessage(
             "BibTeX citation will be included, but note that titles may not match"
           );
@@ -171,9 +197,9 @@ export const useCopyDownload = ({
   const copyToClipboard = async () => {
     try {
       const contentToCopy = await getContentWithOptionalBibtex(
-        markdownSections, 
-        markdown, 
-        "full", 
+        markdownSections,
+        markdown,
+        "full",
         includeBibtex,
         false,
         result
@@ -204,10 +230,10 @@ export const useCopyDownload = ({
     try {
       setIsBibtexLoading(true);
       const content = await getContentWithOptionalBibtex(
-        markdownSections, 
-        markdown, 
-        section, 
-        includeBibtex, 
+        markdownSections,
+        markdown,
+        section,
+        includeBibtex,
         true,
         result
       );
@@ -246,24 +272,24 @@ export const useCopyDownload = ({
         setIsBibtexLoading(true);
         // For allparts, we handle each section individually to prevent duplicate BibTeX
         const mainContent = await getContentWithOptionalBibtex(
-          markdownSections, 
-          markdown, 
-          "main", 
-          includeBibtex, 
+          markdownSections,
+          markdown,
+          "main",
+          includeBibtex,
           true,
           result
         );
         // For appendix and backmatter, we don't add BibTeX even if checkbox is checked
         const appendixContent = getSectionContent(
-          markdownSections, 
-          markdown, 
-          "appendix", 
+          markdownSections,
+          markdown,
+          "appendix",
           true
         );
         const backmatterContent = getSectionContent(
-          markdownSections, 
-          markdown, 
-          "backmatter", 
+          markdownSections,
+          markdown,
+          "backmatter",
           true
         );
 
@@ -406,6 +432,7 @@ export const useCopyDownload = ({
     copySection,
     download,
     handleBibtexChange,
+    retryBibtexGeneration,
     setBaseFilename,
   };
 };
