@@ -2,12 +2,20 @@
 // Organized in a stack layout with button groups for full document and document parts.
 
 import React from "react";
-import { Box, Typography, Button, Stack } from "@mui/material";
+import {
+  Box,
+  Typography,
+  Button,
+  Stack,
+  IconButton,
+  Tooltip,
+} from "@mui/material";
 import {
   ContentCopy as CopyIcon,
   FileDownload as DownloadIcon,
   AddCircleOutline as NewIcon,
   ArrowDropDown as DropDownIcon,
+  InfoOutlined as InfoIcon,
 } from "@mui/icons-material";
 
 interface ActionButtonsProps {
@@ -80,9 +88,45 @@ const ActionButtons: React.FC<ActionButtonsProps> = ({
             mb: 1,
             fontWeight: "medium",
             color: "text.secondary",
+            display: "flex",
+            alignItems: "center",
           }}
         >
           Document Parts
+          <Tooltip
+            title={
+              <React.Fragment>
+                <Typography variant="body2" component="p" sx={{ mt: 1 }}>
+                  <b>Main Content:</b> The main text.
+                </Typography>
+                <Typography variant="body2" component="p">
+                  <b>Appendix:</b> Supplementary material.
+                </Typography>
+                <Typography variant="body2" component="p">
+                  <b>Backmatter:</b> Acknowledgments, references, and other
+                  peripheral information.
+                </Typography>
+                <Typography variant="body2" component="p">
+                  <b>All Parts:</b> The complete document with all parts
+                  combined.
+                </Typography>
+                <Typography
+                  variant="body2"
+                  component="p"
+                  sx={{ fontStyle: "italic", mb: 1 }}
+                >
+                  Sections are extracted automatically and the splits may be
+                  inaccurate.
+                </Typography>
+              </React.Fragment>
+            }
+            arrow
+            placement="top"
+          >
+            <IconButton size="small" sx={{ ml: 0.5, p: 0 }}>
+              <InfoIcon fontSize="small" color="action" />
+            </IconButton>
+          </Tooltip>
         </Typography>
         <Stack direction="row" spacing={1} alignItems="center">
           <Button

@@ -13,23 +13,23 @@ import {
   Grid,
 } from "@mui/material";
 import { DescriptionOutlined as MarkdownIcon } from "@mui/icons-material";
-import { PdfToMdResult } from "../../types/interfaces";
-import { MarkdownPreviewProps } from "./markdown-preview/types";
-import { calculateImageMetrics } from "./markdown-preview/utils/content-utils";
-import { useMarkdownSections } from "./markdown-preview/hooks/useMarkdownSections";
-import { useCopyDownload } from "./markdown-preview/hooks/useCopyDownload";
+import { PdfToMdResult } from "../../../types/interfaces";
+import { MarkdownPreviewProps } from "./types";
+import { calculateImageMetrics } from "./utils/content-utils";
+import { useMarkdownSections } from "./hooks/useMarkdownSections";
+import { useCopyDownload } from "./hooks/useCopyDownload";
 
 // Import components
-import TabPanel from "./markdown-preview/components/TabPanel";
-import DocumentInfo from "./markdown-preview/components/DocumentInfo";
-import ProcessingInfo from "./markdown-preview/components/ProcessingInfo";
-import DocumentSections from "./markdown-preview/components/DocumentSections";
-import ActionButtons from "./markdown-preview/components/ActionButtons";
-import MarkdownRenderer from "./markdown-preview/components/MarkdownRenderer";
-import CopyMenu from "./markdown-preview/components/CopyMenu";
-import DownloadMenu from "./markdown-preview/components/DownloadMenu";
-import FilenameField from "./markdown-preview/components/FilenameField";
-import BibtexOption from "./markdown-preview/components/BibtexOption";
+import TabPanel from "./components/TabPanel";
+import DocumentInfo from "./components/DocumentInfo";
+import ProcessingInfo from "./components/ProcessingInfo";
+import DocumentSections from "./components/DocumentSections";
+import ActionButtons from "./components/ActionButtons";
+import MarkdownRenderer from "./components/MarkdownRenderer";
+import CopyMenu from "./components/CopyMenu";
+import DownloadMenu from "./components/DownloadMenu";
+import FilenameField from "./components/FilenameField";
+import BibtexOption from "./components/BibtexOption";
 
 const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
   result,

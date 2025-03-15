@@ -27,7 +27,7 @@ import InfoIcon from "@mui/icons-material/Info";
 import FileUploader from "./components/FileUploader";
 import ApiKeyManager from "./components/ApiKeyManager";
 import ProcessingStatus from "./components/ProcessingStatus";
-import MarkdownPreview from "./components/MarkdownPreview";
+import MarkdownPreview from "./components/markdown-preview";
 import {
   PdfFile,
   ProgressUpdate,
