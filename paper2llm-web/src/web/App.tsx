@@ -47,6 +47,7 @@ const App: React.FC = () => {
     mistral: "",
     openai: "",
     gemini: "",
+    anthropic: "",
   });
   const [isApiKeyValid, setIsApiKeyValid] = useState<
     Record<ApiProvider, boolean>
@@ -54,6 +55,7 @@ const App: React.FC = () => {
     mistral: false,
     openai: false,
     gemini: false,
+    anthropic: false,
   });
   const [selectedProvider, setSelectedProvider] =
     useState<ApiProvider>("mistral");

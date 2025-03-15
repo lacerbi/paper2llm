@@ -5,7 +5,7 @@
 /**
  * Supported API providers
  */
-export type ApiProvider = 'mistral' | 'openai' | 'gemini';
+export type ApiProvider = 'mistral' | 'openai' | 'gemini' | 'anthropic';
 
 /**
  * Storage type for API keys
