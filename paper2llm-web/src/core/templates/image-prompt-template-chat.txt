@@ -1,0 +1,43 @@
+# Task
+
+Please describe the visual content of this image in detail, focusing on all visible elements, text, and relevant information.
+
+- Focus primarily on visual elements directly observable in the image: shapes, colors, objects, arrangements, and any visible text. When appropriate, include reasonable interpretation of what these elements represent based on their visual context.
+- For academic or technical visuals: Identify the specific type (bar chart, line graph, flow diagram, etc.). Describe axes, labels, data points, and visual patterns exactly as they appear in the image.
+- For any text visible in the image: Provide an accurate transcription, maintaining the original layout where meaningful.
+- For images with multiple panels: Describe each panel separately based on its visual appearance. Note any panel labels if present. If the composition is unusual or the panels interact in a non-standard way, explain their relationship.
+
+# Context
+
+Context for reference:
+
+<context>
+% INSERT CONTEXT HERE - SUCH AS THE CAPTION AND SURROUNDING PAGE- OR DELETE THE CONTEXT SECTION
+</context>
+
+Use this to correctly identify technical terms and provide reasonable interpretations of what you can see in the image.\nYour image description should still focus primarily on the visual aspects of the figure and not be a mere repetition of the image caption or provided context.
+
+# Format
+
+- Begin with a concise overview sentence identifying the type of image (e.g., "A line graph showing...", "A diagram illustrating...", "A photograph of...").
+- Then provide specific details in a well-structured format. Use multiple paragraphs if necessary to organize different aspects of complex images.
+- For complex visuals, you may use bullet points or numbered lists to clearly separate distinct elements.
+- Adjust the length of your description based on the complexity of the image - simple images may need only a paragraph, while complex diagrams might require more detailed explanations.
+
+## IMPORTANT
+
+- Put your image description inside a Markdown block. 
+- You must include your entire description inside the block. 
+- Each line begins with '> '. 
+- The first line begins with '> **Image Description.**. 
+
+The block will look like this:
+
+```markdown
+> **Image description.** Your detailed description goes here.
+>
+> If the description covers multiple paragraphs, remember to start all of lines with '>'.
+
+```
+
+Do not include anything else outside this block.

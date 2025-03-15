@@ -45,7 +45,7 @@ export function formatImagePrompt(contextText?: string): string {
   }
 
   // Insert the context text with formatting
-  const formattedContext = `#Context\n\nContext for reference:\n\n<context>\n${contextText}\n</context>\n\nUse this to correctly identify technical terms and provide reasonable interpretations of what you can see in the image.\nYour image description should still focus primarily on the visual aspects of the figure and not be a mere repetition of the image caption or provided context.\n`;
+  const formattedContext = `# Context\n\nContext for reference:\n\n<context>\n${contextText}\n</context>\n\nUse this to correctly identify technical terms and provide reasonable interpretations of what you can see in the image.\nYour image description should still focus primarily on the visual aspects of the figure and not be a mere repetition of the image caption or provided context.\n`;
 
   return IMAGE_PROMPT_TEMPLATE.replace("{contextText}", formattedContext);
 }
