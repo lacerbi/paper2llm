@@ -26,7 +26,7 @@ export type SectionType = "full" | "main" | "appendix" | "backmatter" | "allpart
 /**
  * Snackbar alert severity types
  */
-export type SnackbarSeverity = "success" | "error" | "info";
+export type SnackbarSeverity = "success" | "error" | "info" | "warning";
 
 /**
  * Image metrics information

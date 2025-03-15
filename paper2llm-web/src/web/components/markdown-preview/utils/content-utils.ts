@@ -1,6 +1,7 @@
 import { MarkdownSections } from "../../../../core/utils/markdown-splitter";
 import { generateBibTeXFromMarkdown } from "../../../../core/utils/bibtex-generator";
 import { SectionType, ImageMetrics } from "../types";
+import { PdfToMdResult } from "../../../../types/interfaces";
 
 /**
  * Gets content for a specific section of the markdown document
@@ -90,6 +91,7 @@ export const getSectionContent = (
  * @param section The section to get content for
  * @param includeBibtex Whether to include BibTeX citation
  * @param addTitle Whether to add a title header
+ * @param result The conversion result object that may contain pre-generated BibTeX
  * @returns Promise resolving to content string or null
  */
 export const getContentWithOptionalBibtex = async (
@@ -97,7 +99,8 @@ export const getContentWithOptionalBibtex = async (
   markdown: string,
   section: SectionType,
   includeBibtex: boolean,
-  addTitle: boolean = false
+  addTitle: boolean = false,
+  result?: PdfToMdResult | null
 ): Promise<string | null> => {
   const content = getSectionContent(markdownSections, markdown, section, addTitle);
 
@@ -108,7 +111,52 @@ export const getContentWithOptionalBibtex = async (
 
   // Only add BibTeX to the full document or main content
   if (section === "full" || section === "main" || section === "allparts") {
-    const bibtex = await generateBibTeXFromMarkdown(content);
+    // Handle BibTeX appropriately
+    let bibtex: string;
+    
+    // Only use pre-generated BibTeX if it exists and isn't an empty string
+    // (empty string indicates generation was attempted but failed)
+    if (result?.bibtex !== undefined && result.bibtex !== '') {
+      // Use pre-generated BibTeX from the result object
+      bibtex = result.bibtex;
+    } else {
+      // If bibtex is undefined or empty string, generate it on demand
+      try {
+        bibtex = await generateBibTeXFromMarkdown(content);
+        
+        // If regeneration produced an empty string, use a mock entry with clear warning
+        if (!bibtex || bibtex.trim() === '') {
+          bibtex = `% WARNING: This is a fallback mock citation.
+% BibTeX generation failed to find this paper in academic databases.
+% Please replace with the correct citation if available.
+% 
+% Generated: ${new Date().toISOString().split('T')[0]}
+@article{unknownYear,
+  title={${markdownSections?.title || "Unknown Title"}},
+  author={Unknown Author},
+  journal={Unknown Journal},
+  year={${new Date().getFullYear()}},
+  note={This is an automatically generated fallback citation}
+}`;
+        }
+      } catch (error) {
+        console.error("Error generating BibTeX on-demand:", error);
+        // Provide a clear fallback message with warning
+        bibtex = `% WARNING: This is a fallback mock citation.
+% BibTeX generation failed with error: ${error instanceof Error ? error.message : "Unknown error"}
+% Please replace with the correct citation if available.
+% 
+% Generated: ${new Date().toISOString().split('T')[0]}
+@article{unknownYear,
+  title={${markdownSections?.title || "Unknown Title"}},
+  author={Unknown Author},
+  journal={Unknown Journal},
+  year={${new Date().getFullYear()}},
+  note={This is an automatically generated fallback citation due to an error}
+}`;
+      }
+    }
+    
     return `\`\`\`\n${bibtex}\n\`\`\`\n\n---\n\n${content}`;
   }
 

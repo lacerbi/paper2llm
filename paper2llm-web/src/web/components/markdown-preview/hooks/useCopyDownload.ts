@@ -3,6 +3,8 @@
 
 import { useState } from "react";
 import { MarkdownSections } from "../../../../core/utils/markdown-splitter";
+import { PdfToMdResult } from "../../../../types/interfaces";
+import { generateBibTeXFromMarkdown } from "../../../../core/utils/bibtex-generator";
 import { 
   SectionType,
   SnackbarSeverity
@@ -17,6 +19,7 @@ interface CopyDownloadHookParams {
   markdown: string;
   markdownSections: MarkdownSections | null;
   sourceFilename: string;
+  result?: PdfToMdResult | null;
 }
 
 interface CopyDownloadHookResult {
@@ -47,7 +50,8 @@ interface CopyDownloadHookResult {
 export const useCopyDownload = ({
   markdown,
   markdownSections,
-  sourceFilename
+  sourceFilename,
+  result
 }: CopyDownloadHookParams): CopyDownloadHookResult => {
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState("");
@@ -94,15 +98,51 @@ export const useCopyDownload = ({
     setDownloadAnchorEl(null);
   };
 
-  const handleBibtexChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setIncludeBibtex(event.target.checked);
+  const handleBibtexChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const isChecked = event.target.checked;
+    setIncludeBibtex(isChecked);
 
-    if (event.target.checked) {
-      setSnackbarMessage(
-        "BibTeX citation will be included in copies and downloads"
-      );
-      setSnackbarSeverity("info");
-      setSnackbarOpen(true);
+    // If checkbox is being checked and we have a failed bibtex generation, try again
+    if (isChecked) {
+      if (result?.bibtex === '') {
+        // Previous generation failed, try regenerating
+        setIsBibtexLoading(true);
+        setSnackbarMessage(
+          "Attempting to regenerate BibTeX citation..."
+        );
+        setSnackbarSeverity("info");
+        setSnackbarOpen(true);
+        
+        try {
+          // Try to generate BibTeX from markdown content
+          if (result && markdown) {
+            const bibtex = await generateBibTeXFromMarkdown(markdown);
+            // Update the result object with the new bibtex
+            if (bibtex && typeof bibtex === 'string' && bibtex.length > 0) {
+              result.bibtex = bibtex;
+              setSnackbarMessage("BibTeX citation regenerated successfully");
+              setSnackbarSeverity("success");
+            } else {
+              setSnackbarMessage("BibTeX regeneration failed - using fallback citation");
+              setSnackbarSeverity("error");
+            }
+          }
+        } catch (error) {
+          console.error("Error regenerating BibTeX:", error);
+          setSnackbarMessage("BibTeX regeneration failed - using fallback citation");
+          setSnackbarSeverity("error");
+        } finally {
+          setIsBibtexLoading(false);
+          setSnackbarOpen(true);
+        }
+      } else {
+        // Normal message for enabling bibtex
+        setSnackbarMessage(
+          "BibTeX citation will be included in copies and downloads"
+        );
+        setSnackbarSeverity("info");
+        setSnackbarOpen(true);
+      }
     }
   };
 
@@ -112,7 +152,9 @@ export const useCopyDownload = ({
         markdownSections, 
         markdown, 
         "full", 
-        includeBibtex
+        includeBibtex,
+        false,
+        result
       );
 
       if (!contentToCopy) {
@@ -144,7 +186,8 @@ export const useCopyDownload = ({
         markdown, 
         section, 
         includeBibtex, 
-        true
+        true,
+        result
       );
 
       if (!content) {
@@ -185,7 +228,8 @@ export const useCopyDownload = ({
           markdown, 
           "main", 
           includeBibtex, 
-          true
+          true,
+          result
         );
         // For appendix and backmatter, we don't add BibTeX even if checkbox is checked
         const appendixContent = getSectionContent(
@@ -274,7 +318,8 @@ export const useCopyDownload = ({
         markdown,
         section,
         includeBibtex,
-        true
+        true,
+        result
       );
       let sectionName = "";
       const sectionDisplayName = getSectionDisplayName(section);

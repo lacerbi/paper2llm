@@ -232,6 +232,7 @@ export interface PdfToMdResult {
   timestamp: string;
   visionModel?: string;
   visionModelProvider?: ApiProvider;
+  bibtex?: string; // Pre-generated BibTeX citation
 }
 
 /**

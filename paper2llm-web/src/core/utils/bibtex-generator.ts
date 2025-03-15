@@ -375,7 +375,7 @@ function semanticScholarToBibTeX(
  *
  * @param title Paper title
  * @param options Options for BibTeX generation
- * @returns Promise resolving to a string with the BibTeX entry
+ * @returns Promise resolving to a string with the BibTeX entry or empty string to indicate failure
  */
 export async function generateBibTeXFromTitle(
   title: string,
@@ -384,6 +384,7 @@ export async function generateBibTeXFromTitle(
   const mergedOptions = { ...DEFAULT_OPTIONS, ...options };
 
   let entry: BibTeXEntry;
+  let usedMockEntry = false;
 
   // Try to use Semantic Scholar API if enabled
   if (mergedOptions.useApi) {
@@ -399,19 +400,26 @@ export async function generateBibTeXFromTitle(
       } else {
         // No results, use mock entry
         entry = generateMockBibTeXEntry(title, mergedOptions);
+        usedMockEntry = true;
       }
     } catch (error) {
       console.error("Error generating BibTeX from API:", error);
       // Fallback to mock entry
       entry = generateMockBibTeXEntry(title, mergedOptions);
+      usedMockEntry = true;
     }
   } else {
     // Use mock entry directly if API is disabled
     entry = generateMockBibTeXEntry(title, mergedOptions);
+    usedMockEntry = true;
   }
 
   // Format the entry to BibTeX string
-  return formatBibTeXEntry(entry);
+  const formattedEntry = formatBibTeXEntry(entry);
+  
+  // Return empty string if we used a mock entry to indicate failure in the UI
+  // but still provide the mock entry for content-utils.ts to use as fallback
+  return usedMockEntry ? "" : formattedEntry;
 }
 
 /**

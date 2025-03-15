@@ -12,6 +12,7 @@ import {
 import { mistralOcrService } from './ocr-service';
 import { markdownProcessor } from './markdown-processor';
 import { multiProviderImageService } from './image-service';
+import { generateBibTeXFromMarkdown } from './utils/bibtex-generator';
 
 export class PdfToMdService {
   /**
@@ -153,8 +154,12 @@ export class PdfToMdService {
         },
         timestamp: new Date().toISOString(),
         visionModel: visionModel, // Can be undefined if "None" option was selected
-        visionModelProvider: visionProvider // Can be undefined if "None" option was selected
+        visionModelProvider: visionProvider, // Can be undefined if "None" option was selected
+        bibtex: undefined // Will be populated asynchronously
       };
+      
+      // Generate BibTeX citation asynchronously without blocking the main conversion
+      this.generateBibTeXAsync(enhancedMarkdown, finalResult, progressReporter);
       
       return finalResult;
     } catch (error) {
@@ -169,6 +174,58 @@ export class PdfToMdService {
   public cancelOperation(): void {
     mistralOcrService.cancelOperation();
     multiProviderImageService.cancelOperation();
+  }
+  
+  /**
+   * Generates BibTeX citation asynchronously and updates the result object
+   * @param markdown The markdown content to generate BibTeX from
+   * @param result The result object to update with the generated BibTeX
+   * @param progressReporter Optional progress reporter
+   */
+  private async generateBibTeXAsync(
+    markdown: string, 
+    result: PdfToMdResult,
+    progressReporter?: ProgressReporter
+  ): Promise<void> {
+    try {
+      if (progressReporter) {
+        progressReporter.reportProgress({
+          stage: 'generating-bibtex',
+          progress: 100, // Main conversion is already complete
+          message: 'Generating BibTeX citation in background',
+          detail: 'Extracting document metadata for citation'
+        });
+      }
+      
+      // Generate BibTeX from the markdown
+      const bibtex = await generateBibTeXFromMarkdown(markdown);
+      
+      // Update the result object with the generated BibTeX
+      result.bibtex = bibtex;
+      
+      if (progressReporter) {
+        progressReporter.reportProgress({
+          stage: 'bibtex-complete',
+          progress: 100,
+          message: 'BibTeX citation generated successfully',
+        });
+      }
+    } catch (error) {
+      // Log but don't affect the main conversion result
+      console.warn('Failed to generate BibTeX citation:', error);
+      
+      if (progressReporter) {
+        progressReporter.reportProgress({
+          stage: 'bibtex-error',
+          progress: 100,
+          message: 'BibTeX generation failed, may need to be generated on demand',
+          detail: (error as Error).message
+        });
+      }
+      
+      // Set to empty string to indicate generation was attempted but failed
+      result.bibtex = '';
+    }
   }
 }
 

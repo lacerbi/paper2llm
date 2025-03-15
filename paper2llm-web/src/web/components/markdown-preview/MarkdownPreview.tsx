@@ -1,5 +1,9 @@
-// AI Summary: Main component that displays converted markdown with actions for copying, downloading, and viewing.
-// Uses extracted components and custom hooks to organize functionality into smaller, focused units.
+// AI Summary: Main component that displays converted markdown with comprehensive document management capabilities.
+// Provides document navigation through tabbed views (rendered/source), metadata display, and section organization.
+// Features copying and downloading of full document or specific sections (main, appendix, backmatter), BibTeX citation generation,
+// and customizable filename handling for exports. Integrates multiple specialized components like DocumentInfo, ProcessingInfo,
+// and MarkdownRenderer, with custom hooks (useMarkdownSections, useCopyDownload) for state management.
+// Handles snackbar notifications, image processing metrics, and supports multiple document format options.
 
 import React, { useState } from "react";
 import {
@@ -66,6 +70,7 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
     markdown: result?.markdown || "",
     markdownSections,
     sourceFilename: result?.sourceFile?.name || "document",
+    result: result,
   });
 
   if (!result) {
@@ -126,6 +131,8 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
             includeBibtex={includeBibtex}
             isBibtexLoading={isBibtexLoading}
             onBibtexChange={handleBibtexChange}
+            bibtexAvailable={Boolean(result?.bibtex)}
+            result={result}
           />
         </Box>
 
