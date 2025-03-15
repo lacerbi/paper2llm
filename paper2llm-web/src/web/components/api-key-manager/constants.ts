@@ -13,17 +13,17 @@ export const PROVIDER_INFO: Record<ApiProvider, ProviderApiKeyInfo> = {
     validationPattern: /^[A-Za-z0-9-_]{32,64}$/,
     docsUrl: "https://console.mistral.ai/api-keys",
   },
-  gemini: {
-    name: "Google Gemini",
-    description: "Optional, for enhanced text and vision capabilities",
-    validationPattern: /^AI[A-Za-z0-9_-]{40,45}$/,
-    docsUrl: "https://aistudio.google.com/app/apikey",
-  },
   anthropic: {
     name: "Anthropic",
     description: "Optional, for enhanced text and vision capabilities",
     validationPattern: /^sk-ant-[A-Za-z0-9-_]{24,}$/,
     docsUrl: "https://console.anthropic.com/settings/keys",
+  },
+  gemini: {
+    name: "Gemini",
+    description: "Optional, for enhanced text and vision capabilities",
+    validationPattern: /^AI[A-Za-z0-9_-]{40,45}$/,
+    docsUrl: "https://aistudio.google.com/app/apikey",
   },
   openai: {
     name: "OpenAI",
