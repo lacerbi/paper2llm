@@ -1,31 +1,22 @@
-// AI Summary: React component for rendering and interacting with converted Markdown.
-// Features include syntax highlighting, copying, downloading, metadata display, and BibTeX citation generation.
-// Uses Material UI for modern styling and improved user experience.
+// AI Summary: Main component that displays converted markdown with actions for copying, downloading, and viewing.
+// Integrates multiple subcomponents for document sections, actions, and content rendering.
 
 import React, { useState, useEffect } from "react";
-import ReactMarkdown from "react-markdown";
 import {
   Box,
   Paper,
   Typography,
-  Button,
   Tabs,
   Tab,
-  Chip,
-  Stack,
   Divider,
   Snackbar,
   Alert,
   IconButton,
-  useTheme,
-  List,
-  ListItem,
+  Menu,
+  MenuItem,
   ListItemIcon,
   ListItemText,
   Grid,
-  Menu,
-  MenuItem,
-  ListItemButton,
   Tooltip,
   Checkbox,
   FormControlLabel,
@@ -33,82 +24,56 @@ import {
   TextField,
 } from "@mui/material";
 import {
-  ContentCopy as CopyIcon,
-  FileDownload as DownloadIcon,
-  AddCircleOutline as NewIcon,
-  Description as DocumentIcon,
-  Image as ImageIcon,
-  CalendarToday as DateIcon,
   DescriptionOutlined as MarkdownIcon,
-  Code as CodeIcon,
-  AutoStories as PageIcon,
-  SmartToy as AIIcon,
-  Architecture as ModelIcon,
-  ArrowDropDown as DropDownIcon,
-  ArrowDownward as DownloadSectionIcon,
+  InfoOutlined as InfoIcon,
   Subject as MainContentIcon,
   BookmarkBorder as AppendixIcon,
   Info as BackmatterIcon,
-  InfoOutlined as InfoIcon,
-  MoreVert as MoreIcon,
   ViewModule as AllPartsIcon,
   MenuBook as CitationIcon,
 } from "@mui/icons-material";
 import { PdfToMdResult } from "../../types/interfaces";
 import {
   splitMarkdownContent,
-  MarkdownSections,
   getMarkdownSectionsMetadata,
-  MarkdownSectionsMetadata,
+  MarkdownSections,
+  MarkdownSectionsMetadata
 } from "../../core/utils/markdown-splitter";
-import { generateBibTeXFromMarkdown } from "../../core/utils/bibtex-generator";
+import { 
+  MarkdownPreviewProps, 
+  SectionType,
+  SnackbarSeverity
+} from "./markdown-preview/types";
+import {
+  getSectionContent, 
+  getContentWithOptionalBibtex, 
+  getSectionDisplayName,
+  calculateImageMetrics
+} from "./markdown-preview/utils/content-utils";
 
-interface MarkdownPreviewProps {
-  result: PdfToMdResult | null;
-  onNewConversion: () => void;
-}
-
-interface TabPanelProps {
-  children?: React.ReactNode;
-  index: number;
-  value: number;
-}
-
-const TabPanel = (props: TabPanelProps) => {
-  const { children, value, index, ...other } = props;
-
-  return (
-    <div
-      role="tabpanel"
-      hidden={value !== index}
-      id={`markdown-tabpanel-${index}`}
-      aria-labelledby={`markdown-tab-${index}`}
-      {...other}
-    >
-      {value === index && <Box sx={{ p: 3 }}>{children}</Box>}
-    </div>
-  );
-};
+// Import extracted components
+import TabPanel from "./markdown-preview/components/TabPanel";
+import DocumentInfo from "./markdown-preview/components/DocumentInfo";
+import ProcessingInfo from "./markdown-preview/components/ProcessingInfo";
+import DocumentSections from "./markdown-preview/components/DocumentSections";
+import ActionButtons from "./markdown-preview/components/ActionButtons";
+import MarkdownRenderer from "./markdown-preview/components/MarkdownRenderer";
 
 const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
   result,
   onNewConversion,
 }) => {
-  const theme = useTheme();
   const [tabValue, setTabValue] = useState(0);
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState("");
-  const [snackbarSeverity, setSnackbarSeverity] = useState<
-    "success" | "error" | "info"
-  >("success");
+  const [snackbarSeverity, setSnackbarSeverity] = useState<SnackbarSeverity>("success");
   const [copyAnchorEl, setCopyAnchorEl] = useState<null | HTMLElement>(null);
   const [downloadAnchorEl, setDownloadAnchorEl] = useState<null | HTMLElement>(
     null
   );
-  const [markdownSections, setMarkdownSections] =
-    useState<MarkdownSections | null>(null);
-  const [sectionMetadata, setSectionMetadata] =
-    useState<MarkdownSectionsMetadata | null>(null);
+  // Fix the type definitions for these state variables
+  const [markdownSections, setMarkdownSections] = useState<MarkdownSections | null>(null);
+  const [sectionMetadata, setSectionMetadata] = useState<MarkdownSectionsMetadata | null>(null);
   const [includeBibtex, setIncludeBibtex] = useState(false);
   const [isBibtexLoading, setIsBibtexLoading] = useState(false);
   // Default base filename from source PDF (without extension)
@@ -142,35 +107,13 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
     return null;
   }
 
-  const { markdown, sourceFile, timestamp, markdownResult } = result;
-
+  const { markdown, sourceFile, timestamp, markdownResult, ocrResult } = result;
+  
+  // Event handlers
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
   };
-
-  const handleCopyToClipboard = async () => {
-    try {
-      const contentToCopy = await getContentWithOptionalBibtex("full");
-
-      if (!contentToCopy) {
-        setSnackbarMessage("No content to copy");
-        setSnackbarSeverity("error");
-        setSnackbarOpen(true);
-        return;
-      }
-
-      await navigator.clipboard.writeText(contentToCopy);
-      setSnackbarMessage("Copied to clipboard!");
-      setSnackbarSeverity("success");
-      setSnackbarOpen(true);
-    } catch (error) {
-      console.error("Error copying to clipboard:", error);
-      setSnackbarMessage("Failed to copy");
-      setSnackbarSeverity("error");
-      setSnackbarOpen(true);
-    }
-  };
-
+  
   const handleSnackbarClose = (
     event?: React.SyntheticEvent | Event,
     reason?: string
@@ -209,125 +152,27 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
     }
   };
 
-  const getSectionContent = (
-    section: "full" | "main" | "appendix" | "backmatter" | "allparts",
-    addTitle: boolean = false
-  ): string | null => {
-    if (!markdownSections) return null;
-
-    let content: string | null;
-    switch (section) {
-      case "full":
-        content = markdown;
-        break;
-      case "main":
-        content = markdownSections.mainContent;
-        break;
-      case "appendix":
-        content = markdownSections.appendix;
-        break;
-      case "backmatter":
-        content = markdownSections.backmatter;
-        break;
-      case "allparts":
-        // Get all parts with titles and concatenate them
-        const parts: string[] = [];
-
-        // Add main content first (always present)
-        if (markdownSections.mainContent) {
-          parts.push(markdownSections.mainContent);
-        }
-
-        // Add appendix if present
-        if (markdownSections.appendix) {
-          const title = markdownSections.title;
-          const appendixContent = addTitle
-            ? `# ${title} - Appendix\n\n---\n\n${markdownSections.appendix}`
-            : markdownSections.appendix;
-          parts.push(appendixContent);
-        }
-
-        // Add backmatter if present
-        if (markdownSections.backmatter) {
-          const title = markdownSections.title;
-          const backmatterContent = addTitle
-            ? `# ${title} - Backmatter\n\n---\n\n${markdownSections.backmatter}`
-            : markdownSections.backmatter;
-          parts.push(backmatterContent);
-        }
-
-        content = parts.join("\n\n");
-        break;
-      default:
-        return null;
-    }
-
-    if (!content) return null;
-
-    // Add title header for appendix and backmatter if requested
-    if (
-      addTitle &&
-      (section === "appendix" || section === "backmatter") &&
-      markdownSections
-    ) {
-      const title = markdownSections.title;
-      const sectionTitle = section.charAt(0).toUpperCase() + section.slice(1);
-      const headerContent = `# ${title} - ${sectionTitle}\n\n---\n\n`;
-      content = headerContent + content;
-    }
-
-    return content;
-  };
-
-  // New function to get content with optional BibTeX
-  const getContentWithOptionalBibtex = async (
-    section: "full" | "main" | "appendix" | "backmatter" | "allparts",
-    addTitle: boolean = false
-  ): Promise<string | null> => {
-    const content = getSectionContent(section, addTitle);
-
-    if (!content) return null;
-
-    // If BibTeX is not requested, return the content as is
-    if (!includeBibtex) return content;
-
+  // Copy/Download handlers
+  const handleCopyToClipboard = async () => {
     try {
-      setIsBibtexLoading(true);
+      const contentToCopy = await getContentWithOptionalBibtex(markdownSections, markdown, "full", includeBibtex);
 
-      // Only add BibTeX to the full document or main content
-      if (section === "full" || section === "main" || section === "allparts") {
-        const bibtex = await generateBibTeXFromMarkdown(content);
-        return `\`\`\`\n${bibtex}\n\`\`\`\n\n---\n\n${content}`;
+      if (!contentToCopy) {
+        setSnackbarMessage("No content to copy");
+        setSnackbarSeverity("error");
+        setSnackbarOpen(true);
+        return;
       }
 
-      return content;
+      await navigator.clipboard.writeText(contentToCopy);
+      setSnackbarMessage("Copied to clipboard!");
+      setSnackbarSeverity("success");
+      setSnackbarOpen(true);
     } catch (error) {
-      console.error("Error generating BibTeX:", error);
-      setSnackbarMessage("Failed to generate BibTeX citation");
+      console.error("Error copying to clipboard:", error);
+      setSnackbarMessage("Failed to copy");
       setSnackbarSeverity("error");
       setSnackbarOpen(true);
-      return content;
-    } finally {
-      setIsBibtexLoading(false);
-    }
-  };
-
-  const getSectionDisplayName = (
-    section: "full" | "main" | "appendix" | "backmatter" | "allparts"
-  ): string => {
-    switch (section) {
-      case "full":
-        return "Full document";
-      case "main":
-        return "Main content";
-      case "appendix":
-        return "Appendix";
-      case "backmatter":
-        return "Backmatter";
-      case "allparts":
-        return "All Parts";
-      default:
-        return "Document";
     }
   };
 
@@ -335,7 +180,8 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
     section: "main" | "appendix" | "backmatter" | "allparts"
   ) => {
     try {
-      const content = await getContentWithOptionalBibtex(section, true);
+      setIsBibtexLoading(true);
+      const content = await getContentWithOptionalBibtex(markdownSections, markdown, section, includeBibtex, true);
 
       if (!content) {
         setSnackbarMessage(
@@ -359,20 +205,23 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
       setSnackbarMessage("Failed to copy");
       setSnackbarSeverity("error");
       setSnackbarOpen(true);
+    } finally {
+      setIsBibtexLoading(false);
     }
   };
 
   const handleDownload = async (
-    section: "full" | "main" | "appendix" | "backmatter" | "allparts" = "full"
+    section: SectionType = "full"
   ) => {
     // Special handling for "allparts" to download all three separate files
     if (section === "allparts") {
       try {
+        setIsBibtexLoading(true);
         // For allparts, we handle each section individually to prevent duplicate BibTeX
-        const mainContent = await getContentWithOptionalBibtex("main", true);
+        const mainContent = await getContentWithOptionalBibtex(markdownSections, markdown, "main", includeBibtex, true);
         // For appendix and backmatter, we don't add BibTeX even if checkbox is checked
-        const appendixContent = getSectionContent("appendix", true);
-        const backmatterContent = getSectionContent("backmatter", true);
+        const appendixContent = getSectionContent(markdownSections, markdown, "appendix", true);
+        const backmatterContent = getSectionContent(markdownSections, markdown, "backmatter", true);
 
         let downloadCount = 0;
         let successCount = 0;
@@ -433,14 +282,20 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
         setSnackbarMessage("Error downloading document parts");
         setSnackbarSeverity("error");
         setSnackbarOpen(true);
+      } finally {
+        setIsBibtexLoading(false);
       }
       return;
     }
 
     // Regular download handling for other section types
     try {
+      setIsBibtexLoading(true);
       const contentToDownload = await getContentWithOptionalBibtex(
+        markdownSections,
+        markdown,
         section,
+        includeBibtex,
         true
       );
       let sectionName = "";
@@ -482,140 +337,13 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
       setSnackbarMessage("Error downloading content");
       setSnackbarSeverity("error");
       setSnackbarOpen(true);
+    } finally {
+      setIsBibtexLoading(false);
     }
   };
 
-  const formatTimestamp = (isoString: string): string => {
-    const date = new Date(isoString);
-    return date.toLocaleString();
-  };
-
-  const formatFileSize = (bytes: number): string => {
-    if (bytes < 1024) {
-      return `${bytes} B`;
-    } else if (bytes < 1024 * 1024) {
-      return `${(bytes / 1024).toFixed(1)} KB`;
-    } else {
-      return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-    }
-  };
-
-  // Calculate image metrics
-  const calculateImageMetrics = () => {
-    // Count all markdown image references (standard format)
-    const markdownImageCount = (markdown.match(/!\[.*?\]\(.*?\)/g) || [])
-      .length;
-
-    // Count all images with descriptions
-    const describedImageCount = (
-      markdown.match(/> \*\*Image Description:\*\*/g) || []
-    ).length;
-
-    // Use the larger of the two counts for total images, ensuring describedImageCount is never > originalImageCount
-    // This handles cases where images were processed but aren't in markdown syntax
-    const originalImageCount = Math.max(
-      markdownImageCount,
-      describedImageCount
-    );
-
-    return {
-      originalImageCount,
-      describedImageCount,
-      hasProcessedImages: describedImageCount > 0,
-    };
-  };
-
-  const imageMetrics = calculateImageMetrics();
-
-  // Custom components for ReactMarkdown
-  const components = {
-    blockquote: ({ node, ...props }: any) => {
-      // Check if this is an image description blockquote
-      const isImageDescription =
-        props.children &&
-        props.children.toString().includes("Image Description");
-
-      return (
-        <Box
-          component="blockquote"
-          sx={{
-            pl: 2,
-            borderLeft: isImageDescription
-              ? `4px solid ${theme.palette.info.main}`
-              : `4px solid ${theme.palette.primary.main}`,
-            bgcolor: isImageDescription
-              ? "rgba(41, 182, 246, 0.1)"
-              : "rgba(0, 0, 0, 0.03)",
-            borderRadius: "0 4px 4px 0",
-            py: 1,
-            px: 2,
-            my: 2,
-          }}
-          {...props}
-        />
-      );
-    },
-    code: ({ node, inline, className, children, ...props }: any) => {
-      return inline ? (
-        <Box
-          component="code"
-          sx={{
-            bgcolor: "rgba(0, 0, 0, 0.05)",
-            px: 0.75,
-            py: 0.25,
-            borderRadius: 0.5,
-            fontFamily: "monospace",
-          }}
-          {...props}
-        >
-          {children}
-        </Box>
-      ) : (
-        <Box
-          component="pre"
-          sx={{
-            bgcolor: "rgba(0, 0, 0, 0.05)",
-            p: 2,
-            borderRadius: 1,
-            overflowX: "auto",
-            fontFamily: "monospace",
-            fontSize: "0.875rem",
-            my: 2,
-          }}
-          {...props}
-        >
-          <code className={className}>{children}</code>
-        </Box>
-      );
-    },
-    table: ({ node, ...props }: any) => (
-      <Box
-        component="div"
-        sx={{
-          overflowX: "auto",
-          my: 2,
-        }}
-      >
-        <Box
-          component="table"
-          sx={{
-            borderCollapse: "collapse",
-            width: "100%",
-            "& th, & td": {
-              border: `1px solid ${theme.palette.divider}`,
-              p: 1,
-              textAlign: "left",
-            },
-            "& th": {
-              bgcolor: "rgba(0, 0, 0, 0.04)",
-              fontWeight: "bold",
-            },
-          }}
-          {...props}
-        />
-      </Box>
-    ),
-  };
+  const imageMetrics = calculateImageMetrics(markdown);
+  const imagesCount = ocrResult.pages.reduce((total, page) => total + page.images.length, 0);
 
   return (
     <Paper
@@ -686,431 +414,41 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
           />
         </Box>
 
-        <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-          {/* Full Document Actions */}
-          <Box>
-            <Typography
-              variant="subtitle2"
-              sx={{ mb: 1, fontWeight: "medium", color: "text.secondary" }}
-            >
-              Full Document
-            </Typography>
-            <Stack direction="row" spacing={1}>
-              <Button
-                variant="outlined"
-                startIcon={<CopyIcon />}
-                onClick={handleCopyToClipboard}
-                size="small"
-                disabled={isBibtexLoading}
-              >
-                Copy Full
-              </Button>
-              <Button
-                variant="outlined"
-                color="secondary"
-                startIcon={<DownloadIcon />}
-                onClick={() => handleDownload("full")}
-                size="small"
-                disabled={isBibtexLoading}
-              >
-                Download Full
-              </Button>
-              <Button
-                variant="contained"
-                color="primary"
-                startIcon={<NewIcon />}
-                onClick={onNewConversion}
-                size="small"
-              >
-                New Conversion
-              </Button>
-            </Stack>
-          </Box>
-
-          {/* Document Parts Dropdown Buttons */}
-          <Box>
-            <Typography
-              variant="subtitle2"
-              sx={{
-                mb: 1,
-                fontWeight: "medium",
-                color: "text.secondary",
-                display: "flex",
-                alignItems: "center",
-              }}
-            >
-              Document Parts
-              <Tooltip
-                title={
-                  <React.Fragment>
-                    <Typography variant="body2" component="p" sx={{ mt: 1 }}>
-                      <b>Main Content:</b> The main text.
-                    </Typography>
-                    <Typography variant="body2" component="p">
-                      <b>Appendix:</b> Supplementary material.
-                    </Typography>
-                    <Typography variant="body2" component="p">
-                      <b>Backmatter:</b> Acknowledgments, references, and other
-                      peripheral information.
-                    </Typography>
-                    <Typography variant="body2" component="p">
-                      <b>All Parts:</b> The complete document with all parts
-                      combined.
-                    </Typography>
-                    <Typography
-                      variant="body2"
-                      component="p"
-                      sx={{ fontStyle: "italic", mb: 1 }}
-                    >
-                      Sections are extracted automatically and the splits may be
-                      inaccurate.
-                    </Typography>
-                  </React.Fragment>
-                }
-                arrow
-                placement="top"
-              >
-                <IconButton size="small" sx={{ ml: 0.5, p: 0 }}>
-                  <InfoIcon fontSize="small" color="action" />
-                </IconButton>
-              </Tooltip>
-            </Typography>
-            <Stack direction="row" spacing={1} alignItems="center">
-              <Button
-                variant="outlined"
-                endIcon={<DropDownIcon />}
-                onClick={handleCopyMenuOpen}
-                size="small"
-                startIcon={<CopyIcon />}
-                disabled={isBibtexLoading}
-              >
-                Copy
-              </Button>
-              <Menu
-                anchorEl={copyAnchorEl}
-                open={Boolean(copyAnchorEl)}
-                onClose={handleCopyMenuClose}
-              >
-                <MenuItem
-                  onClick={() => {
-                    handleCopySection("main");
-                    handleCopyMenuClose();
-                  }}
-                >
-                  <ListItemIcon>
-                    <MainContentIcon fontSize="small" />
-                  </ListItemIcon>
-                  <ListItemText
-                    primary="Main Content"
-                    secondary={
-                      sectionMetadata?.wordCount.mainContent
-                        ? `${sectionMetadata.wordCount.mainContent} words`
-                        : undefined
-                    }
-                  />
-                </MenuItem>
-                <MenuItem
-                  onClick={() => {
-                    handleCopySection("appendix");
-                    handleCopyMenuClose();
-                  }}
-                  disabled={!sectionMetadata?.hasAppendix}
-                >
-                  <ListItemIcon>
-                    <AppendixIcon fontSize="small" />
-                  </ListItemIcon>
-                  <ListItemText
-                    primary="Appendix"
-                    secondary={
-                      sectionMetadata?.hasAppendix &&
-                      sectionMetadata?.wordCount.appendix
-                        ? `${sectionMetadata.wordCount.appendix} words`
-                        : "Not available"
-                    }
-                  />
-                </MenuItem>
-                <MenuItem
-                  onClick={() => {
-                    handleCopySection("backmatter");
-                    handleCopyMenuClose();
-                  }}
-                  disabled={!sectionMetadata?.hasBackmatter}
-                >
-                  <ListItemIcon>
-                    <BackmatterIcon fontSize="small" />
-                  </ListItemIcon>
-                  <ListItemText
-                    primary="Backmatter"
-                    secondary={
-                      sectionMetadata?.hasBackmatter &&
-                      sectionMetadata?.wordCount.backmatter
-                        ? `${sectionMetadata.wordCount.backmatter} words`
-                        : "Not available"
-                    }
-                  />
-                </MenuItem>
-                <Divider />
-                <MenuItem
-                  onClick={() => {
-                    handleCopySection("allparts");
-                    handleCopyMenuClose();
-                  }}
-                >
-                  <ListItemIcon>
-                    <AllPartsIcon fontSize="small" />
-                  </ListItemIcon>
-                  <ListItemText
-                    primary="All Parts"
-                    secondary={
-                      sectionMetadata?.wordCount.total
-                        ? `${sectionMetadata.wordCount.total} words total`
-                        : undefined
-                    }
-                  />
-                </MenuItem>
-              </Menu>
-
-              <Button
-                variant="outlined"
-                color="secondary"
-                endIcon={<DropDownIcon />}
-                onClick={handleDownloadMenuOpen}
-                size="small"
-                startIcon={<DownloadIcon />}
-                disabled={isBibtexLoading}
-              >
-                Download
-              </Button>
-              <Menu
-                anchorEl={downloadAnchorEl}
-                open={Boolean(downloadAnchorEl)}
-                onClose={handleDownloadMenuClose}
-              >
-                <MenuItem
-                  onClick={() => {
-                    handleDownload("main");
-                    handleDownloadMenuClose();
-                  }}
-                >
-                  <ListItemIcon>
-                    <MainContentIcon fontSize="small" />
-                  </ListItemIcon>
-                  <ListItemText
-                    primary="Main Content"
-                    secondary={
-                      sectionMetadata?.wordCount.mainContent
-                        ? `${sectionMetadata.wordCount.mainContent} words`
-                        : undefined
-                    }
-                  />
-                </MenuItem>
-                <MenuItem
-                  onClick={() => {
-                    handleDownload("appendix");
-                    handleDownloadMenuClose();
-                  }}
-                  disabled={!sectionMetadata?.hasAppendix}
-                >
-                  <ListItemIcon>
-                    <AppendixIcon fontSize="small" />
-                  </ListItemIcon>
-                  <ListItemText
-                    primary="Appendix"
-                    secondary={
-                      sectionMetadata?.hasAppendix &&
-                      sectionMetadata?.wordCount.appendix
-                        ? `${sectionMetadata.wordCount.appendix} words`
-                        : "Not available"
-                    }
-                  />
-                </MenuItem>
-                <MenuItem
-                  onClick={() => {
-                    handleDownload("backmatter");
-                    handleDownloadMenuClose();
-                  }}
-                  disabled={!sectionMetadata?.hasBackmatter}
-                >
-                  <ListItemIcon>
-                    <BackmatterIcon fontSize="small" />
-                  </ListItemIcon>
-                  <ListItemText
-                    primary="Backmatter"
-                    secondary={
-                      sectionMetadata?.hasBackmatter &&
-                      sectionMetadata?.wordCount.backmatter
-                        ? `${sectionMetadata.wordCount.backmatter} words`
-                        : "Not available"
-                    }
-                  />
-                </MenuItem>
-                <Divider />
-                <MenuItem
-                  onClick={() => {
-                    handleDownload("allparts");
-                    handleDownloadMenuClose();
-                  }}
-                >
-                  <ListItemIcon>
-                    <AllPartsIcon fontSize="small" />
-                  </ListItemIcon>
-                  <ListItemText
-                    primary="All Parts"
-                    secondary="Download all parts as separate files"
-                  />
-                </MenuItem>
-              </Menu>
-            </Stack>
-          </Box>
-        </Box>
+        {/* Action Buttons Component */}
+        <ActionButtons
+          onCopyFull={handleCopyToClipboard}
+          onDownloadFull={() => handleDownload("full")}
+          onNewConversion={onNewConversion}
+          onCopyMenuOpen={handleCopyMenuOpen}
+          onDownloadMenuOpen={handleDownloadMenuOpen}
+          isBibtexLoading={isBibtexLoading}
+        />
       </Box>
 
       <Paper
         variant="outlined"
         sx={{ p: 2, mb: 3, bgcolor: "background.default" }}
       >
-        {/* Add a new row to display section information */}
-        {sectionMetadata && (
-          <Box sx={{ mb: 2 }}>
-            <Typography
-              variant="subtitle2"
-              sx={{ mb: 1, fontWeight: "medium", color: "text.secondary" }}
-            >
-              Document Sections
-            </Typography>
-            <Stack direction="row" spacing={2} sx={{ flexWrap: "wrap" }}>
-              <Chip
-                icon={<MainContentIcon />}
-                label={`Main Content (${sectionMetadata.wordCount.mainContent} words)`}
-                color="primary"
-                variant="outlined"
-                size="small"
-              />
-              {sectionMetadata.hasAppendix && (
-                <Chip
-                  icon={<AppendixIcon />}
-                  label={`Appendix (${sectionMetadata.wordCount.appendix} words)`}
-                  color="secondary"
-                  variant="outlined"
-                  size="small"
-                />
-              )}
-              {sectionMetadata.hasBackmatter && (
-                <Chip
-                  icon={<BackmatterIcon />}
-                  label={`Backmatter (${sectionMetadata.wordCount.backmatter} words)`}
-                  color="info"
-                  variant="outlined"
-                  size="small"
-                />
-              )}
-              <Chip
-                label={`Total: ${sectionMetadata.wordCount.total} words`}
-                variant="outlined"
-                size="small"
-              />
-            </Stack>
-          </Box>
-        )}
+        {/* Document Sections Component */}
+        <DocumentSections sectionMetadata={sectionMetadata} />
+
         <Grid container spacing={2}>
-          <Grid item xs={12} md={6}>
-            <Typography
-              variant="subtitle2"
-              sx={{ mb: 1, fontWeight: "medium", color: "text.secondary" }}
-            >
-              Document Information
-            </Typography>
-            <List dense disablePadding>
-              <ListItem disablePadding sx={{ mb: 0.5 }}>
-                <ListItemIcon sx={{ minWidth: 36 }}>
-                  <DocumentIcon fontSize="small" color="primary" />
-                </ListItemIcon>
-                <ListItemText
-                  primary={sourceFile.name}
-                  secondary={`Size: ${formatFileSize(sourceFile.size)}`}
-                  primaryTypographyProps={{ variant: "body2" }}
-                  secondaryTypographyProps={{ variant: "caption" }}
-                />
-              </ListItem>
-              <ListItem disablePadding sx={{ mb: 0.5 }}>
-                <ListItemIcon sx={{ minWidth: 36 }}>
-                  <PageIcon fontSize="small" color="primary" />
-                </ListItemIcon>
-                <ListItemText
-                  primary={`${markdownResult.pageCount} pages`}
-                  primaryTypographyProps={{ variant: "body2" }}
-                />
-              </ListItem>
-              <ListItem disablePadding sx={{ mb: 0.5 }}>
-                <ListItemIcon sx={{ minWidth: 36 }}>
-                  <DateIcon fontSize="small" color="primary" />
-                </ListItemIcon>
-                <ListItemText
-                  primary={`Converted: ${formatTimestamp(timestamp)}`}
-                  primaryTypographyProps={{ variant: "body2" }}
-                />
-              </ListItem>
-            </List>
-          </Grid>
+          {/* Document Info Component */}
+          <DocumentInfo
+            filename={sourceFile.name}
+            fileSize={sourceFile.size}
+            pageCount={markdownResult.pageCount}
+            timestamp={timestamp}
+          />
 
-          <Grid item xs={12} md={6}>
-            <Typography
-              variant="subtitle2"
-              sx={{ mb: 1, fontWeight: "medium", color: "text.secondary" }}
-            >
-              Processing Information
-            </Typography>
-            <List dense disablePadding>
-              <ListItem disablePadding sx={{ mb: 0.5 }}>
-                <ListItemIcon sx={{ minWidth: 36 }}>
-                  <CodeIcon fontSize="small" color="primary" />
-                </ListItemIcon>
-                <ListItemText
-                  primary={`OCR Model: ${markdownResult.model}`}
-                  primaryTypographyProps={{ variant: "body2" }}
-                />
-              </ListItem>
-
-              {/* Image count - use the actual count from OCR result */}
-              <ListItem disablePadding sx={{ mb: 0.5 }}>
-                <ListItemIcon sx={{ minWidth: 36 }}>
-                  <ImageIcon fontSize="small" color="primary" />
-                </ListItemIcon>
-                <ListItemText
-                  primary={`Images: ${result.ocrResult.pages.reduce(
-                    (total, page) => total + page.images.length,
-                    0
-                  )} detected`}
-                  secondary={
-                    imageMetrics.describedImageCount > 0
-                      ? `${imageMetrics.describedImageCount} images with AI descriptions`
-                      : null
-                  }
-                  primaryTypographyProps={{ variant: "body2" }}
-                  secondaryTypographyProps={{ variant: "caption" }}
-                />
-              </ListItem>
-
-              {/* Vision model info - display if available in the result */}
-              {result.visionModel && (
-                <ListItem disablePadding sx={{ mb: 0.5 }}>
-                  <ListItemIcon sx={{ minWidth: 36 }}>
-                    <ModelIcon fontSize="small" color="info" />
-                  </ListItemIcon>
-                  <ListItemText
-                    primary={`Vision Model: ${result.visionModel}`}
-                    secondary={
-                      result.visionModelProvider
-                        ? `Provider: ${result.visionModelProvider}`
-                        : null
-                    }
-                    primaryTypographyProps={{ variant: "body2" }}
-                    secondaryTypographyProps={{ variant: "caption" }}
-                  />
-                </ListItem>
-              )}
-            </List>
-          </Grid>
+          {/* Processing Info Component */}
+          <ProcessingInfo
+            ocrModel={markdownResult.model}
+            imagesCount={imagesCount}
+            imageMetrics={imageMetrics}
+            visionModel={result.visionModel}
+            visionModelProvider={result.visionModelProvider}
+          />
         </Grid>
       </Paper>
 
@@ -1135,38 +473,182 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
       </Box>
 
       <TabPanel value={tabValue} index={0}>
-        <Paper
-          variant="outlined"
-          sx={{
-            p: 3,
-            bgcolor: "background.default",
-            maxHeight: "72vh" /* Increased height by 20% (from 60vh to 72vh) */,
-            overflow: "auto",
-            borderRadius: 1,
-          }}
-        >
-          <ReactMarkdown components={components}>{markdown}</ReactMarkdown>
+        <Paper variant="outlined">
+          <MarkdownRenderer markdown={markdown} />
         </Paper>
       </TabPanel>
 
       <TabPanel value={tabValue} index={1}>
-        <Paper
-          variant="outlined"
-          sx={{
-            p: 2,
-            bgcolor: "rgba(0, 0, 0, 0.03)",
-            maxHeight: "72vh" /* Increased height by 20% (from 60vh to 72vh) */,
-            overflow: "auto",
-            borderRadius: 1,
-            fontFamily: "monospace",
-            fontSize: "0.875rem",
-            whiteSpace: "pre-wrap",
-            wordBreak: "break-word",
-          }}
-        >
-          {markdown}
+        <Paper variant="outlined">
+          <MarkdownRenderer markdown={markdown} isSourceView={true} />
         </Paper>
       </TabPanel>
+
+      {/* Copy Section Menu */}
+      <Menu
+        anchorEl={copyAnchorEl}
+        open={Boolean(copyAnchorEl)}
+        onClose={handleCopyMenuClose}
+      >
+        <MenuItem
+          onClick={() => {
+            handleCopySection("main");
+            handleCopyMenuClose();
+          }}
+        >
+          <ListItemIcon>
+            <MainContentIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText
+            primary="Main Content"
+            secondary={
+              sectionMetadata?.wordCount?.mainContent
+                ? `${sectionMetadata.wordCount.mainContent} words`
+                : undefined
+            }
+          />
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            handleCopySection("appendix");
+            handleCopyMenuClose();
+          }}
+          disabled={!sectionMetadata?.hasAppendix}
+        >
+          <ListItemIcon>
+            <AppendixIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText
+            primary="Appendix"
+            secondary={
+              sectionMetadata?.hasAppendix &&
+              sectionMetadata?.wordCount?.appendix
+                ? `${sectionMetadata.wordCount.appendix} words`
+                : "Not available"
+            }
+          />
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            handleCopySection("backmatter");
+            handleCopyMenuClose();
+          }}
+          disabled={!sectionMetadata?.hasBackmatter}
+        >
+          <ListItemIcon>
+            <BackmatterIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText
+            primary="Backmatter"
+            secondary={
+              sectionMetadata?.hasBackmatter &&
+              sectionMetadata?.wordCount?.backmatter
+                ? `${sectionMetadata.wordCount.backmatter} words`
+                : "Not available"
+            }
+          />
+        </MenuItem>
+        <Divider />
+        <MenuItem
+          onClick={() => {
+            handleCopySection("allparts");
+            handleCopyMenuClose();
+          }}
+        >
+          <ListItemIcon>
+            <AllPartsIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText
+            primary="All Parts"
+            secondary={
+              sectionMetadata?.wordCount?.total
+                ? `${sectionMetadata.wordCount.total} words total`
+                : undefined
+            }
+          />
+        </MenuItem>
+      </Menu>
+
+      {/* Download Section Menu */}
+      <Menu
+        anchorEl={downloadAnchorEl}
+        open={Boolean(downloadAnchorEl)}
+        onClose={handleDownloadMenuClose}
+      >
+        <MenuItem
+          onClick={() => {
+            handleDownload("main");
+            handleDownloadMenuClose();
+          }}
+        >
+          <ListItemIcon>
+            <MainContentIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText
+            primary="Main Content"
+            secondary={
+              sectionMetadata?.wordCount?.mainContent
+                ? `${sectionMetadata.wordCount.mainContent} words`
+                : undefined
+            }
+          />
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            handleDownload("appendix");
+            handleDownloadMenuClose();
+          }}
+          disabled={!sectionMetadata?.hasAppendix}
+        >
+          <ListItemIcon>
+            <AppendixIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText
+            primary="Appendix"
+            secondary={
+              sectionMetadata?.hasAppendix &&
+              sectionMetadata?.wordCount?.appendix
+                ? `${sectionMetadata.wordCount.appendix} words`
+                : "Not available"
+            }
+          />
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            handleDownload("backmatter");
+            handleDownloadMenuClose();
+          }}
+          disabled={!sectionMetadata?.hasBackmatter}
+        >
+          <ListItemIcon>
+            <BackmatterIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText
+            primary="Backmatter"
+            secondary={
+              sectionMetadata?.hasBackmatter &&
+              sectionMetadata?.wordCount?.backmatter
+                ? `${sectionMetadata.wordCount.backmatter} words`
+                : "Not available"
+            }
+          />
+        </MenuItem>
+        <Divider />
+        <MenuItem
+          onClick={() => {
+            handleDownload("allparts");
+            handleDownloadMenuClose();
+          }}
+        >
+          <ListItemIcon>
+            <AllPartsIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText
+            primary="All Parts"
+            secondary="Download all parts as separate files"
+          />
+        </MenuItem>
+      </Menu>
 
       <Snackbar
         open={snackbarOpen}
