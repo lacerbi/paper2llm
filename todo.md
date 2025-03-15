@@ -2,8 +2,6 @@
 
 ## Bugs and high-priority
 
-- Improve postprocess formatting of Markdown file (ensure there is a newline before/after images)
-
 ## Medium-priority
 
 - Add support for Anthropic models
