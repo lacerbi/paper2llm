@@ -86,35 +86,40 @@ export class MarkdownProcessor {
    * @returns Enhanced markdown with image descriptions
    */
   /**
-   * Ensures proper spacing around image description blocks in markdown
+   * Ensures proper spacing around image description blocks and figure captions in markdown
    *
    * @param markdown The markdown content to process
-   * @returns Processed markdown with proper spacing around image descriptions
+   * @returns Processed markdown with proper spacing around image descriptions and figure captions
    */
   private ensureImageDescriptionSpacing(markdown: string): string {
     if (!markdown) {
       return markdown;
     }
-    
+
     // Split the markdown into lines to process it line by line
     const lines = markdown.split("\n");
     let result = [];
     let inImageBlock = false;
+    let afterImageBlock = false; // New state variable to track if we're after an image block
     let i = 0;
-    
+
     while (i < lines.length) {
       const line = lines[i];
-      
+
       // Check if this line starts a new image description block
-      if (!inImageBlock && line.match(/^> \*\*(?:Image description|Image Description|Image)\.\*\*/)) {
+      if (
+        !inImageBlock &&
+        line.match(/^> \*\*(?:Image description|Image Description|Image)\.\*\*/)
+      ) {
         // We found the start of an image block
         inImageBlock = true;
-        
+        afterImageBlock = false; // Reset since we're entering a new block
+
         // Ensure there's an empty line before (unless at the beginning of the document)
         if (i > 0 && result.length > 0 && result[result.length - 1] !== "") {
           result.push("");
         }
-        
+
         // Add the current line
         result.push(line);
       }
@@ -127,30 +132,54 @@ export class MarkdownProcessor {
       else if (inImageBlock) {
         // End of image block
         inImageBlock = false;
-        
+        afterImageBlock = true; // Mark that we just exited an image block
+
         // Ensure there's an empty line after the block
         if (line !== "") {
           result.push("");
         }
-        
+
         // Add the current line (unless it's already an empty line)
         if (line !== "") {
           result.push(line);
         }
       }
-      else {
-        // Regular line, not part of an image block
+      // Check for figure captions after image blocks (with possible empty lines in between)
+      else if (afterImageBlock && line.match(/^Figure /)) {
+        // This is a figure caption after an image block
+
+        // Ensure there's an empty line before the figure caption
+        if (result.length > 0 && result[result.length - 1] !== "") {
+          result.push("");
+        }
+
+        // Add the figure caption
         result.push(line);
+
+        // Ensure there's an empty line after the figure caption
+        if (i < lines.length - 1 && lines[i + 1] !== "") {
+          result.push("");
+        }
       }
-      
+      else {
+        // Regular line, not part of an image block or figure caption
+        result.push(line);
+        
+        // If this is a non-empty line and not a figure caption, 
+        // we're no longer right after an image block
+        if (line !== "" && !line.match(/^Figure /)) {
+          afterImageBlock = false;
+        }
+      }
+
       i++;
     }
-    
+
     // If the document ends with an image block, ensure there's an empty line after
     if (inImageBlock) {
       result.push("");
     }
-    
+
     // Join the lines back into a single string
     return result.join("\n");
   }
