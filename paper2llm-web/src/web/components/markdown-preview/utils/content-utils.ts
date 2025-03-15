@@ -1,7 +1,10 @@
+// AI Summary: Utility functions for managing markdown content and BibTeX citations.
+// Handles section extraction, BibTeX generation and validation, and image metrics calculation.
+
 import { MarkdownSections } from "../../../../core/utils/markdown-splitter";
-import { generateBibTeXFromMarkdown } from "../../../../core/utils/bibtex-generator";
+import { generateBibTeXFromMarkdown, BibTeXGenerationResult } from "../../../../core/utils/bibtex-generator";
 import { SectionType, ImageMetrics } from "../types";
-import { PdfToMdResult } from "../../../../types/interfaces";
+import { PdfToMdResult, BibTeXTitleValidation } from "../../../../types/interfaces";
 
 /**
  * Gets content for a specific section of the markdown document
@@ -119,15 +122,40 @@ export const getContentWithOptionalBibtex = async (
     if (result?.bibtex !== undefined && result.bibtex !== '') {
       // Use pre-generated BibTeX from the result object
       bibtex = result.bibtex;
+      
+      // Check if we need to add title mismatch warning to existing BibTeX
+      if (result.bibtexTitleValidation && !result.bibtexTitleValidation.matches && 
+          !bibtex.includes("WARNING: The retrieved citation title may not match")) {
+        // Add warning for non-matching titles that didn't already have it
+        bibtex = `% WARNING: The retrieved citation title may not match the paper title.
+% Paper title: "${result.bibtexTitleValidation.originalTitle}"
+% Citation title: "${result.bibtexTitleValidation.bibtexTitle}"
+% 
+${bibtex}`;
+      }
     } else {
       // If bibtex is undefined or empty string, generate it on demand
       try {
-        bibtex = await generateBibTeXFromMarkdown(content);
+        const generationResult: BibTeXGenerationResult = await generateBibTeXFromMarkdown(content);
+        bibtex = generationResult.bibtex;
+        
+        // Store title validation result in the result object if available
+        if (result && generationResult.titleValidation) {
+          result.bibtexTitleValidation = generationResult.titleValidation;
+        }
         
         // If regeneration produced an empty string, use a mock entry with clear warning
         if (!bibtex || bibtex.trim() === '') {
+          // Add title mismatch warning if applicable
+          const titleWarning = generationResult.titleValidation && !generationResult.titleValidation.matches
+            ? `% WARNING: The paper title does not match the citation title.
+% Paper title: "${generationResult.titleValidation.originalTitle}"
+% Citation title: "${generationResult.titleValidation.bibtexTitle}"
+% `
+            : '';
+          
           bibtex = `% WARNING: This is a fallback mock citation.
-% BibTeX generation failed to find this paper in academic databases.
+${titleWarning}% BibTeX generation failed to find this paper in academic databases.
 % Please replace with the correct citation if available.
 % 
 % Generated: ${new Date().toISOString().split('T')[0]}
@@ -138,6 +166,13 @@ export const getContentWithOptionalBibtex = async (
   year={${new Date().getFullYear()}},
   note={This is an automatically generated fallback citation}
 }`;
+        } else if (generationResult.titleValidation && !generationResult.titleValidation.matches) {
+          // For successful retrievals with non-matching titles, add a warning comment
+          bibtex = `% WARNING: The retrieved citation title may not match the paper title.
+% Paper title: "${generationResult.titleValidation.originalTitle}"
+% Citation title: "${generationResult.titleValidation.bibtexTitle}"
+% 
+${bibtex}`;
         }
       } catch (error) {
         console.error("Error generating BibTeX on-demand:", error);

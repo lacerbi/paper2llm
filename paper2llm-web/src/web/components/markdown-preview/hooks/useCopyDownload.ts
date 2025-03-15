@@ -3,8 +3,8 @@
 
 import { useState } from "react";
 import { MarkdownSections } from "../../../../core/utils/markdown-splitter";
-import { PdfToMdResult } from "../../../../types/interfaces";
-import { generateBibTeXFromMarkdown } from "../../../../core/utils/bibtex-generator";
+import { PdfToMdResult, BibTeXTitleValidation } from "../../../../types/interfaces";
+import { generateBibTeXFromMarkdown, BibTeXGenerationResult } from "../../../../core/utils/bibtex-generator";
 import { 
   SectionType,
   SnackbarSeverity
@@ -116,15 +116,29 @@ export const useCopyDownload = ({
         try {
           // Try to generate BibTeX from markdown content
           if (result && markdown) {
-            const bibtex = await generateBibTeXFromMarkdown(markdown);
-            // Update the result object with the new bibtex
-            if (bibtex && typeof bibtex === 'string' && bibtex.length > 0) {
-              result.bibtex = bibtex;
-              setSnackbarMessage("BibTeX citation regenerated successfully");
-              setSnackbarSeverity("success");
+            const generationResult: BibTeXGenerationResult = await generateBibTeXFromMarkdown(markdown);
+            
+            // Update the result object with the new bibtex and validation info
+            if (generationResult.bibtex && generationResult.bibtex.length > 0) {
+              result.bibtex = generationResult.bibtex;
+              result.bibtexTitleValidation = generationResult.titleValidation;
+              
+              // Show appropriate message based on title validation
+              if (generationResult.titleValidation && !generationResult.titleValidation.matches) {
+                setSnackbarMessage("BibTeX regenerated successfully, but title may not match paper");
+                setSnackbarSeverity("warning");
+              } else {
+                setSnackbarMessage("BibTeX citation regenerated successfully");
+                setSnackbarSeverity("success");
+              }
             } else {
               setSnackbarMessage("BibTeX regeneration failed - using fallback citation");
               setSnackbarSeverity("error");
+              
+              // Store validation info even for mock entries
+              if (generationResult.titleValidation) {
+                result.bibtexTitleValidation = generationResult.titleValidation;
+              }
             }
           }
         } catch (error) {
@@ -136,11 +150,19 @@ export const useCopyDownload = ({
           setSnackbarOpen(true);
         }
       } else {
-        // Normal message for enabling bibtex
-        setSnackbarMessage(
-          "BibTeX citation will be included in copies and downloads"
-        );
-        setSnackbarSeverity("info");
+        // Check for title mismatch and show appropriate message
+        if (result?.bibtexTitleValidation && !result.bibtexTitleValidation.matches) {
+          setSnackbarMessage(
+            "BibTeX citation will be included, but note that titles may not match"
+          );
+          setSnackbarSeverity("warning");
+        } else {
+          // Normal message for enabling bibtex
+          setSnackbarMessage(
+            "BibTeX citation will be included in copies and downloads"
+          );
+          setSnackbarSeverity("info");
+        }
         setSnackbarOpen(true);
       }
     }

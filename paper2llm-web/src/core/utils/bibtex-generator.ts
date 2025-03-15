@@ -1,8 +1,10 @@
 // AI Summary: Utility for generating BibTeX citations from academic paper titles.
 // Interfaces with Semantic Scholar API to search for matching papers or generates mock citations.
 // Provides functions for extracting paper metadata, formatting BibTeX entries, and sanitizing text.
+// Includes title validation to verify that retrieved citations match paper titles.
 
 import { extractTitle } from "./markdown-splitter";
+import { BibTeXTitleValidation } from "../../types/interfaces";
 
 /**
  * Represents a BibTeX entry with required and optional fields
@@ -26,6 +28,9 @@ export interface BibTeXEntry {
   doi?: string;
   url?: string;
   abstract?: string;
+  
+  // Title validation information
+  titleValidation?: BibTeXTitleValidation;
 
   // Additional fields can be added as needed
   [key: string]: any;
@@ -237,6 +242,7 @@ function formatBibTeXEntry(entry: BibTeXEntry): string {
       "doi",
       "url",
       "abstract",
+      "titleValidation"
     ];
     if (!skipFields.includes(key) && value !== undefined) {
       const formattedValue =
@@ -249,6 +255,73 @@ function formatBibTeXEntry(entry: BibTeXEntry): string {
   bibtex = bibtex.slice(0, -2) + "\n}";
 
   return bibtex;
+}
+
+/**
+ * Normalizes a title for comparison by:
+ * 1. Converting to lowercase
+ * 2. Removing non-letter characters
+ * 3. Removing extra whitespace
+ * 
+ * @param title The title to normalize
+ * @returns Normalized title string
+ */
+function normalizeTitleForComparison(title: string): string {
+  if (!title) return "";
+  
+  // Convert to lowercase and remove all non-letter characters
+  let normalized = title.toLowerCase()
+    .replace(/[^a-z\s]/g, '') // Remove everything except letters and spaces
+    .replace(/\s+/g, ' ')     // Normalize whitespace
+    .trim();
+    
+  return normalized;
+}
+
+/**
+ * Compares two titles using loose comparison to determine if they refer to the same paper
+ * 
+ * @param originalTitle The title extracted from the paper
+ * @param bibtexTitle The title from the BibTeX entry
+ * @returns Validation information including match status and normalized titles
+ */
+function compareTitles(originalTitle: string, bibtexTitle: string): BibTeXTitleValidation {
+  const normalizedOriginal = normalizeTitleForComparison(originalTitle);
+  const normalizedBibtex = normalizeTitleForComparison(bibtexTitle);
+  
+  // Check if the normalized titles are similar enough
+  // For very short titles, we require exact matching
+  // For longer titles, we allow some variation by comparing as sets of words
+  let matches = false;
+  
+  if (normalizedOriginal.length < 10 || normalizedBibtex.length < 10) {
+    // For short titles, require exact match
+    matches = normalizedOriginal === normalizedBibtex;
+  } else {
+    // For longer titles, convert to arrays of words and check overlap
+    const originalWords = normalizedOriginal.split(' ');
+    const bibtexWords = new Set(normalizedBibtex.split(' '));
+    
+    // Count words in common
+    let commonWords = 0;
+    originalWords.forEach(word => {
+      if (bibtexWords.has(word)) commonWords++;
+    });
+    
+    // Calculate similarity as percentage of words in common
+    const similarity = commonWords / Math.max(originalWords.length, bibtexWords.size);
+    
+    // Consider a match if more than 75% of words match
+    matches = similarity > 0.75;
+  }
+  
+  return {
+    matches,
+    originalTitle,
+    bibtexTitle,
+    normalizedOriginal,
+    normalizedBibtex
+  };
 }
 
 /**
@@ -332,11 +405,13 @@ async function searchSemanticScholar(
  * Converts a Semantic Scholar paper to a BibTeX entry
  *
  * @param paper Semantic Scholar paper object
+ * @param originalTitle The original title from the paper
  * @param options BibTeX generation options
  * @returns BibTeX entry object
  */
 function semanticScholarToBibTeX(
   paper: SemanticScholarPaperResponse,
+  originalTitle: string,
   options: BibTeXGenerationOptions = DEFAULT_OPTIONS
 ): BibTeXEntry {
   // Extract authors
@@ -365,8 +440,21 @@ function semanticScholarToBibTeX(
   if (options.includeAbstract && paper.abstract) {
     entry.abstract = paper.abstract;
   }
+  
+  // Add title validation information
+  entry.titleValidation = compareTitles(originalTitle, paper.title);
 
   return entry;
+}
+
+/**
+ * Interface for BibTeX generation result
+ */
+export interface BibTeXGenerationResult {
+  bibtex: string;            // The formatted BibTeX entry string
+  titleValidation?: BibTeXTitleValidation; // Title validation information
+  usedMockEntry: boolean;    // Whether a mock entry was used
+  entry: BibTeXEntry;        // The raw entry object for further processing
 }
 
 /**
@@ -375,12 +463,12 @@ function semanticScholarToBibTeX(
  *
  * @param title Paper title
  * @param options Options for BibTeX generation
- * @returns Promise resolving to a string with the BibTeX entry or empty string to indicate failure
+ * @returns Promise resolving to a BibTeX generation result object
  */
 export async function generateBibTeXFromTitle(
   title: string,
   options: BibTeXGenerationOptions = DEFAULT_OPTIONS
-): Promise<string> {
+): Promise<BibTeXGenerationResult> {
   const mergedOptions = { ...DEFAULT_OPTIONS, ...options };
 
   let entry: BibTeXEntry;
@@ -396,30 +484,58 @@ export async function generateBibTeXFromTitle(
 
       if (results && results.length > 0) {
         // Use the first (best) match
-        entry = semanticScholarToBibTeX(results[0], mergedOptions);
+        entry = semanticScholarToBibTeX(results[0], title, mergedOptions);
       } else {
         // No results, use mock entry
         entry = generateMockBibTeXEntry(title, mergedOptions);
+        // Add validation info for mock entry (will always be a non-match)
+        entry.titleValidation = {
+          matches: false,
+          originalTitle: title,
+          bibtexTitle: entry.title,
+          normalizedOriginal: normalizeTitleForComparison(title),
+          normalizedBibtex: normalizeTitleForComparison(entry.title)
+        };
         usedMockEntry = true;
       }
     } catch (error) {
       console.error("Error generating BibTeX from API:", error);
       // Fallback to mock entry
       entry = generateMockBibTeXEntry(title, mergedOptions);
+      // Add validation info for mock entry (will always be a non-match)
+      entry.titleValidation = {
+        matches: false,
+        originalTitle: title,
+        bibtexTitle: entry.title,
+        normalizedOriginal: normalizeTitleForComparison(title),
+        normalizedBibtex: normalizeTitleForComparison(entry.title)
+      };
       usedMockEntry = true;
     }
   } else {
     // Use mock entry directly if API is disabled
     entry = generateMockBibTeXEntry(title, mergedOptions);
+    // Add validation info for mock entry (will always be a non-match)
+    entry.titleValidation = {
+      matches: false,
+      originalTitle: title,
+      bibtexTitle: entry.title,
+      normalizedOriginal: normalizeTitleForComparison(title),
+      normalizedBibtex: normalizeTitleForComparison(entry.title)
+    };
     usedMockEntry = true;
   }
 
   // Format the entry to BibTeX string
   const formattedEntry = formatBibTeXEntry(entry);
   
-  // Return empty string if we used a mock entry to indicate failure in the UI
-  // but still provide the mock entry for content-utils.ts to use as fallback
-  return usedMockEntry ? "" : formattedEntry;
+  // Return complete result object
+  return {
+    bibtex: usedMockEntry ? "" : formattedEntry, // Empty string indicates failure in UI
+    titleValidation: entry.titleValidation,
+    usedMockEntry,
+    entry
+  };
 }
 
 /**
@@ -428,15 +544,27 @@ export async function generateBibTeXFromTitle(
  *
  * @param markdownContent The markdown content to extract title from
  * @param options Options for BibTeX generation
- * @returns Promise resolving to a string with the BibTeX entry
+ * @returns Promise resolving to a BibTeX generation result object
  */
 export async function generateBibTeXFromMarkdown(
   markdownContent: string,
   options: BibTeXGenerationOptions = DEFAULT_OPTIONS
-): Promise<string> {
+): Promise<BibTeXGenerationResult> {
   // Extract title from markdown
   const title = extractTitle(markdownContent);
 
   // Generate BibTeX
   return generateBibTeXFromTitle(title, options);
+}
+
+/**
+ * For backward compatibility with code that expects a string return value
+ * @deprecated Use the BibTeXGenerationResult version instead
+ */
+export async function generateBibTeXFromMarkdownLegacy(
+  markdownContent: string,
+  options: BibTeXGenerationOptions = DEFAULT_OPTIONS
+): Promise<string> {
+  const result = await generateBibTeXFromMarkdown(markdownContent, options);
+  return result.bibtex;
 }

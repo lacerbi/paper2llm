@@ -233,6 +233,18 @@ export interface PdfToMdResult {
   visionModel?: string;
   visionModelProvider?: ApiProvider;
   bibtex?: string; // Pre-generated BibTeX citation
+  bibtexTitleValidation?: BibTeXTitleValidation; // Title validation information
+}
+
+/**
+ * Interface for BibTeX title validation results
+ */
+export interface BibTeXTitleValidation {
+  matches: boolean; // Whether titles match under loose comparison
+  originalTitle: string; // The title extracted from the paper
+  bibtexTitle: string; // The title from the BibTeX entry
+  normalizedOriginal: string; // Normalized paper title
+  normalizedBibtex: string; // Normalized BibTeX title
 }
 
 /**

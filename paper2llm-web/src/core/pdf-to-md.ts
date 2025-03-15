@@ -7,12 +7,13 @@ import {
   MarkdownOptions, 
   PdfToMdResult,
   ProgressReporter,
-  ApiProvider
+  ApiProvider,
+  BibTeXTitleValidation
 } from '../types/interfaces';
 import { mistralOcrService } from './ocr-service';
 import { markdownProcessor } from './markdown-processor';
 import { multiProviderImageService } from './image-service';
-import { generateBibTeXFromMarkdown } from './utils/bibtex-generator';
+import { generateBibTeXFromMarkdown, BibTeXGenerationResult } from './utils/bibtex-generator';
 
 export class PdfToMdService {
   /**
@@ -198,10 +199,11 @@ export class PdfToMdService {
       }
       
       // Generate BibTeX from the markdown
-      const bibtex = await generateBibTeXFromMarkdown(markdown);
+      const bibtexResult = await generateBibTeXFromMarkdown(markdown);
       
-      // Update the result object with the generated BibTeX
-      result.bibtex = bibtex;
+      // Update the result object with the generated BibTeX and validation info
+      result.bibtex = bibtexResult.bibtex;
+      result.bibtexTitleValidation = bibtexResult.titleValidation;
       
       if (progressReporter) {
         progressReporter.reportProgress({
