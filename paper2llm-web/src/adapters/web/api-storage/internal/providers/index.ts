@@ -18,6 +18,7 @@
 import { MistralProvider } from './mistral-provider';
 import { OpenAIProvider } from './openai-provider';
 import { GeminiProvider } from './gemini-provider';
+import { AnthropicProvider } from './anthropic-provider';
 import { BaseProvider } from './base-provider';
 
 // Export base provider class and implementations
@@ -25,6 +26,7 @@ export { BaseProvider } from './base-provider';
 export { MistralProvider } from './mistral-provider';
 export { OpenAIProvider } from './openai-provider';
 export { GeminiProvider } from './gemini-provider';
+export { AnthropicProvider } from './anthropic-provider';
 
 // Export utility functions and factory
 
@@ -41,6 +43,7 @@ export function createDefaultProviders() {
   const mistralProvider = new MistralProvider();
   const openaiProvider = new OpenAIProvider();
   const geminiProvider = new GeminiProvider();
+  const anthropicProvider = new AnthropicProvider();
   
-  return [mistralProvider, openaiProvider, geminiProvider];
+  return [mistralProvider, openaiProvider, geminiProvider, anthropicProvider];
 }

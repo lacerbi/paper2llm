@@ -18,6 +18,7 @@ export const useApiKeyState = (onApiKeyChange: (apiKey: string, provider: ApiPro
     mistral: '',
     openai: '',
     gemini: '',
+    anthropic: '',
   });
   
   // Provider selection state
@@ -31,18 +32,21 @@ export const useApiKeyState = (onApiKeyChange: (apiKey: string, provider: ApiPro
     mistral: false,
     openai: false,
     gemini: false,
+    anthropic: false,
   });
   
   const [isValid, setIsValid] = useState<Record<ApiProvider, boolean>>({
     mistral: false,
     openai: false,
     gemini: false,
+    anthropic: false,
   });
   
   const [isAuthenticated, setIsAuthenticated] = useState<Record<ApiProvider, boolean>>({
     mistral: false,
     openai: false,
     gemini: false,
+    anthropic: false,
   });
   
   // Masked API keys for display
@@ -50,6 +54,7 @@ export const useApiKeyState = (onApiKeyChange: (apiKey: string, provider: ApiPro
     mistral: '',
     openai: '',
     gemini: '',
+    anthropic: '',
   });
   
   // Error state
@@ -65,12 +70,14 @@ export const useApiKeyState = (onApiKeyChange: (apiKey: string, provider: ApiPro
       mistral: false,
       openai: false,
       gemini: false,
+      anthropic: false,
     };
 
     const newIsAuthenticated: Record<ApiProvider, boolean> = {
       mistral: false,
       openai: false,
       gemini: false,
+      anthropic: false,
     };
 
     // Update states for each stored provider

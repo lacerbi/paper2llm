@@ -1,9 +1,10 @@
 {
   "name": "paper2llm",
-  "version": "0.4.2",
+  "version": "0.5.0",
   "private": true,
   "homepage": "https://lacerbi.github.io/paper2llm",
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.0",
     "@mui/icons-material": "^6.4.7",

@@ -4,8 +4,6 @@
 
 ## Medium-priority
 
-- Add support for Anthropic models
-
 ## Low-priority
 
 - Add an "Unlock all" options for the passwords?

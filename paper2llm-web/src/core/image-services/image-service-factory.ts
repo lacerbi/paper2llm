@@ -1,11 +1,12 @@
 // AI Summary: Factory class for creating provider-specific image services.
-// Dynamically selects between Mistral and OpenAI implementations based on provider.
+// Dynamically selects between Mistral, OpenAI, Gemini and Anthropic implementations based on provider.
 // Provides unified interface for accessing vision models across providers.
 
 import { ApiProvider, ImageService, VisionModelInfo } from "../../types/interfaces";
 import { MistralImageService } from "./mistral-image-service";
 import { OpenAIImageService } from "./openai-image-service";
 import { GeminiImageService } from "./gemini-image-service";
+import { AnthropicImageService } from "./anthropic-image-service";
 
 /**
 * Factory for creating provider-specific image service instances
@@ -15,11 +16,13 @@ export class ImageServiceFactory {
  private mistralService: MistralImageService;
  private openaiService: OpenAIImageService;
  private geminiService: GeminiImageService;
+ private anthropicService: AnthropicImageService;
 
  private constructor() {
    this.mistralService = new MistralImageService();
    this.openaiService = new OpenAIImageService();
    this.geminiService = new GeminiImageService();
+   this.anthropicService = new AnthropicImageService();
  }
 
  /**
@@ -43,6 +46,8 @@ export class ImageServiceFactory {
        return this.openaiService;
      case 'gemini':
        return this.geminiService;
+     case 'anthropic':
+       return this.anthropicService;
      default:
        throw new Error(`Unsupported provider: ${provider}`);
    }
@@ -89,7 +94,8 @@ export class ImageServiceFactory {
    return [
      ...this.mistralService.getAvailableModels('mistral'),
      ...this.openaiService.getAvailableModels('openai'),
-     ...this.geminiService.getAvailableModels('gemini')
+     ...this.geminiService.getAvailableModels('gemini'),
+     ...this.anthropicService.getAvailableModels('anthropic')
    ];
  }
 
@@ -107,6 +113,7 @@ export class ImageServiceFactory {
    this.mistralService.cancelOperation();
    this.openaiService.cancelOperation();
    this.geminiService.cancelOperation();
+   this.anthropicService.cancelOperation();
  }
 }
 
