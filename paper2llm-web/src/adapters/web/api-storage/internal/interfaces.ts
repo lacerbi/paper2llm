@@ -83,10 +83,13 @@ export interface ApiKeyProvider {
  * This structure is serialized to JSON and Base64 encoded before storage.
  */
 export interface EncryptedKeyData {
-  encryptedKey: string; // Base64 encoded XOR-encrypted API key
-  validation: string; // Base64 encoded HMAC for validation
+  encryptedKey: string; // Base64 encoded AES-GCM encrypted API key
+  salt: string; // Base64 encoded random salt for PBKDF2 key derivation
+  iv: string; // Base64 encoded initialization vector for AES-GCM
+  iterations: number; // Number of PBKDF2 iterations for key derivation
+  algorithm: string; // Encryption algorithm identifier (e.g., "AES-GCM")
   version: number; // Storage format version for migrations
-  provider?: ApiProvider; // Provider identifier (added in version 3)
+  provider?: ApiProvider; // Provider identifier
 }
 
 /**
@@ -101,6 +104,34 @@ export interface ValidationInfo {
   salt: string;
   hmac: string;
 }
+
+/**
+ * Crypto algorithm options
+ * 
+ * Defines constants for supported cryptographic algorithms
+ * and their configuration parameters.
+ */
+export const CRYPTO_ALGORITHMS = {
+  AES_GCM: "AES-GCM",
+  PBKDF2: "PBKDF2",
+};
+
+/**
+ * Default cryptographic parameters
+ * 
+ * Defines secure default values for various cryptographic parameters
+ * used in the API key encryption system.
+ */
+export const CRYPTO_DEFAULTS = {
+  // Key derivation parameters
+  KEY_ITERATIONS: 100000, // Number of PBKDF2 iterations
+  KEY_LENGTH: 256, // Key length in bits
+  SALT_LENGTH: 16, // Salt length in bytes
+  
+  // Encryption parameters
+  IV_LENGTH: 12, // Initialization vector length in bytes for AES-GCM
+  TAG_LENGTH: 128, // Authentication tag length in bits
+};
 
 /**
  * Base storage key patterns

@@ -151,7 +151,7 @@ export abstract class BaseImageService implements ImageService {
             stage: "processing-images",
             progress: Math.round((i / totalImages) * 100),
             message: `Processing image ${i + 1} of ${totalImages}`,
-            detail: `Image ID: ${image.id}${context ? " (with context)" : ""}`,
+            detail: `Processing Images (${i + 1}/${totalImages}) - ${Math.round((i / totalImages) * 100)}%${context ? "\nContext available" : ""}${image.id ? "\nImage ID: " + image.id : ""}`,
           });
         }
 
@@ -205,8 +205,8 @@ export abstract class BaseImageService implements ImageService {
           message: `Processed ${successCount} of ${totalImages} images successfully`,
           detail:
             errors.length > 0
-              ? `Failed to process ${errors.length} images. Check logs for details.`
-              : `All images processed successfully`,
+              ? `Completed: ${successCount}/${totalImages} images (${Math.round((successCount / totalImages) * 100)}%)\nFailed: ${errors.length} images. ${errors.length > 0 ? "Check logs for details." : ""}`
+              : `Completed: ${successCount}/${totalImages} images (100%)`,
         });
       }
 

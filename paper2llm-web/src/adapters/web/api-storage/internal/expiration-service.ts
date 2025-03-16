@@ -94,7 +94,7 @@ export class WebExpirationService implements ExpirationService {
       "1day": 24 * 60 * 60 * 1000,
       "7days": 7 * 24 * 60 * 60 * 1000,
       "30days": 30 * 24 * 60 * 60 * 1000,
-      never: 0, // No expiration
+      "90days": 90 * 24 * 60 * 60 * 1000,
     };
   }
 
@@ -170,19 +170,18 @@ export class WebExpirationService implements ExpirationService {
   /**
    * Calculate an expiration timestamp based on the expiration type
    *
-   * Converts an expiration type (like "7days" or "30days") into an actual
+   * Converts an expiration type (like "7days", "30days", or "90days") into an actual
    * timestamp when the key will expire. This timestamp is stored alongside
    * the key and checked during retrieval.
    *
-   * Special cases:
-   * - "never" returns null to indicate no expiration
+   * Special case:
    * - "session" returns null as session expiration is handled by sessionStorage
    *
    * @param expiration The expiration type to calculate
-   * @returns A timestamp in milliseconds or null for never/session
+   * @returns A timestamp in milliseconds or null for session
    */
   calculateExpirationTime(expiration: ApiKeyExpiration): number | null {
-    if (expiration === "never" || expiration === "session") {
+    if (expiration === "session") {
       return null;
     }
 

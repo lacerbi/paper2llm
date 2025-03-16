@@ -1,5 +1,5 @@
 // AI Summary: Defines custom error class for API key storage exceptions.
-// Provides meaningful error messages for storage, retrieval, and validation failures.
+// Provides meaningful error messages for storage, retrieval, validation, and cryptographic failures.
 
 /**
  * Custom error class for API key storage errors
@@ -10,6 +10,7 @@
  * - API key validation failures
  * - Storage/retrieval errors
  * - Format migration issues
+ * - Cryptographic operation failures
  * 
  * These errors are designed to be displayed directly to users when appropriate.
  */

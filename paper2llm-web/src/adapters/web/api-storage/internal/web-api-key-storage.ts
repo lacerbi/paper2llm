@@ -1,7 +1,7 @@
 // AI Summary: Implements secure API key storage for multiple providers using provider registry system.
 // Delegates provider-specific operations to provider implementations while maintaining
-// clean, non-legacy storage architecture with support for multiple storage locations,
-// expiration options, and password protection.
+// clean storage architecture with support for multiple storage locations,
+// expiration options, and modern cryptographic protection.
 
 import {
   ApiKeyStorage,
@@ -17,9 +17,11 @@ import {
   StorageKeyPatterns,
   ApiKeyProvider,
   createDefaultStorageKeyPatterns,
+  CRYPTO_ALGORITHMS,
+  CRYPTO_DEFAULTS,
 } from "./interfaces";
 import { passwordValidation } from "./password-utils";
-import { encryptionUtils } from "./encryption-utils";
+import { cryptoUtils } from "./crypto-utils";
 import { WebProviderRegistry } from "./provider-registry";
 import { createDefaultProviders } from "./providers/index";
 import { StorageOperations, WebStorageOperations } from "./storage-operations";
@@ -37,6 +39,7 @@ import { WebExpirationService, ExpirationService } from "./expiration-service";
  * - Session-based auto-generated keys for temporary storage
  * - Configurable expiration policies
  * - Validation of API key formats and decryption integrity
+ * - Modern cryptography using Web Crypto API (AES-GCM, PBKDF2)
  *
  * This implementation uses a provider registry system to delegate
  * provider-specific operations to appropriate provider implementations,
@@ -53,7 +56,16 @@ export class WebApiKeyStorage implements ApiKeyStorage {
   // Storage key patterns
   private readonly keyPatterns: StorageKeyPatterns;
 
-  private readonly storageVersion = 3; // Increment when storage format changes
+  /**
+   * Current storage version, incremented for the cryptographic upgrade
+   *
+   * Version 4 incorporates:
+   * - AES-GCM authenticated encryption for key security
+   * - PBKDF2 key derivation with high iteration count
+   * - Secure random IV and salt generation
+   * - All cryptographic parameters stored with encrypted data
+   */
+  private readonly storageVersion = 4;
 
   /**
    * Creates a new WebApiKeyStorage instance
@@ -91,12 +103,18 @@ export class WebApiKeyStorage implements ApiKeyStorage {
    * 2. Validates the API key format for the specified provider
    * 3. Enforces security rules (password required for persistent storage)
    * 4. Validates password strength for persistent storage
-   * 5. Encrypts the key with appropriate password
+   * 5. Encrypts the key with modern cryptography
    * 6. Stores the encrypted key and all metadata
    *
    * Security rules:
    * - For localStorage (persistent), a password is REQUIRED
    * - For sessionStorage, password is optional (auto-generated if not provided)
+   *
+   * The implementation uses modern cryptography:
+   * - AES-GCM for authenticated encryption (confidentiality and integrity)
+   * - PBKDF2 for secure key derivation from password with high iteration count
+   * - Secure random generation for all cryptographic parameters (salt, IV)
+   * - Authentication tag included to verify data integrity
    *
    * @param apiKey The API key to store
    * @param options Storage options including storage type, password, expiration, and provider
@@ -111,7 +129,7 @@ export class WebApiKeyStorage implements ApiKeyStorage {
     const {
       password,
       storageType = "local",
-      expiration = "never",
+      expiration = "session",
       provider = defaultProviderId,
     } = options;
 
@@ -143,46 +161,59 @@ export class WebApiKeyStorage implements ApiKeyStorage {
     }
 
     const storage = this.storageOperations.getStorage(storageType);
-    const encryptedKeyData = encryptionUtils.encryptApiKey(
-      apiKey,
-      password || encryptionUtils.getSessionKey(),
-      provider,
-      this.storageVersion,
-      defaultProviderId
-    );
 
-    // Get provider-specific storage keys
-    const storageKey = providerImpl.getStorageKey(
-      this.keyPatterns.storageKeyPattern
-    );
-    const protectedKey = providerImpl.getProtectedKey(
-      this.keyPatterns.protectedKeyPattern
-    );
-    const storageTypeKey = providerImpl.getStorageTypeKey(
-      this.keyPatterns.storageTypeKeyPattern
-    );
-    const expirationKey = providerImpl.getExpirationKey(
-      this.keyPatterns.expirationKeyPattern
-    );
-    const expirationTimeKey = providerImpl.getExpirationTimeKey(
-      this.keyPatterns.expirationTimeKeyPattern
-    );
+    try {
+      // Use the new cryptoUtils for secure encryption
+      const encryptedKeyData = await cryptoUtils.encryptApiKey(
+        apiKey,
+        password || cryptoUtils.getSessionKey(),
+        provider,
+        this.storageVersion,
+        defaultProviderId
+      );
 
-    // Store the encrypted key
-    storage.setItem(storageKey, encryptedKeyData);
+      // Get provider-specific storage keys
+      const storageKey = providerImpl.getStorageKey(
+        this.keyPatterns.storageKeyPattern
+      );
+      const protectedKey = providerImpl.getProtectedKey(
+        this.keyPatterns.protectedKeyPattern
+      );
+      const storageTypeKey = providerImpl.getStorageTypeKey(
+        this.keyPatterns.storageTypeKeyPattern
+      );
+      const expirationKey = providerImpl.getExpirationKey(
+        this.keyPatterns.expirationKeyPattern
+      );
+      const expirationTimeKey = providerImpl.getExpirationTimeKey(
+        this.keyPatterns.expirationTimeKeyPattern
+      );
 
-    // Store metadata
-    storage.setItem(protectedKey, password ? "true" : "false");
-    storage.setItem(storageTypeKey, storageType);
-    storage.setItem(expirationKey, expiration);
+      // Store the encrypted key
+      storage.setItem(storageKey, encryptedKeyData);
 
-    // Calculate and store expiration time if applicable
-    const expirationTime =
-      this.expirationService.calculateExpirationTime(expiration);
-    if (expirationTime !== null) {
-      storage.setItem(expirationTimeKey, expirationTime.toString());
-    } else {
-      storage.removeItem(expirationTimeKey);
+      // Store metadata
+      storage.setItem(protectedKey, password ? "true" : "false");
+      storage.setItem(storageTypeKey, storageType);
+      storage.setItem(expirationKey, expiration);
+
+      // Calculate and store expiration time if applicable
+      const expirationTime =
+        this.expirationService.calculateExpirationTime(expiration);
+      if (expirationTime !== null) {
+        storage.setItem(expirationTimeKey, expirationTime.toString());
+      } else {
+        storage.removeItem(expirationTimeKey);
+      }
+    } catch (error) {
+      // Handle cryptographic operation failures
+      if (error instanceof ApiKeyStorageError) {
+        throw error;
+      }
+
+      throw new ApiKeyStorageError(
+        "Failed to securely store API key. Your browser may not support the required cryptographic features."
+      );
     }
   }
 
@@ -195,8 +226,14 @@ export class WebApiKeyStorage implements ApiKeyStorage {
    * 3. Determines the storage type being used
    * 4. Retrieves the encrypted key from the appropriate storage
    * 5. Checks if the key is password protected
-   * 6. Decrypts the key with appropriate password
+   * 6. Decrypts the key with the Web Crypto API
    * 7. Returns the decrypted key or throws meaningful errors
+   *
+   * Security features:
+   * - AES-GCM authenticated decryption verifies data integrity
+   * - Key derivation using stored salt and iterations
+   * - Detailed error messages for authentication failures
+   * - Automatic handling of expired keys
    *
    * @param password Password for decryption (required if key was stored with password)
    * @param provider The provider to retrieve the key for (defaults to default provider)
@@ -248,19 +285,32 @@ export class WebApiKeyStorage implements ApiKeyStorage {
     }
 
     try {
-      return encryptionUtils.decryptApiKey(
+      // Use the cryptoUtils for secure decryption with authenticated encryption
+      const decryptedKey = await cryptoUtils.decryptApiKey(
         encryptedData,
-        isProtected ? password || "" : encryptionUtils.getSessionKey(),
+        isProtected ? password || "" : cryptoUtils.getSessionKey(),
         this.validateApiKey.bind(this),
         defaultProviderId
       );
+
+      return decryptedKey;
     } catch (error) {
-      // Rethrow with a more user-friendly message
+      // Pass through ApiKeyStorageError instances
       if (error instanceof ApiKeyStorageError) {
         throw error;
-      } else {
-        throw new ApiKeyStorageError("Failed to decrypt API key");
       }
+
+      // Check for browser compatibility issues
+      if (!cryptoUtils.isWebCryptoAvailable()) {
+        throw new ApiKeyStorageError(
+          "Your browser doesn't support the required cryptographic features. Please use a modern browser."
+        );
+      }
+
+      // Generic error with more helpful message
+      throw new ApiKeyStorageError(
+        "Failed to decrypt API key. The password may be incorrect or the data may be corrupted."
+      );
     }
   }
 

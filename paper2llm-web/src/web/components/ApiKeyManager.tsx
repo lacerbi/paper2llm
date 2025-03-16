@@ -299,7 +299,12 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onApiKeyChange }) => {
               password={passwordState.password}
               passwordError={passwordState.passwordError}
               isLocked={securityState.isLocked}
+              lockCountdown={securityState.lockCountdown}
+              isExtendedLockout={securityState.isExtendedLockout}
+              incorrectAttempts={securityState.incorrectAttempts}
+              formatLockoutTime={securityState.formatLockoutTime}
               onExpirationChange={securityState.handleExpirationChange}
+              onClearLockout={securityState.clearLockout}
             />
           )}
 

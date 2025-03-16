@@ -282,7 +282,9 @@ const ProcessingStatus: React.FC<ProcessingStatusProps> = ({
             <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
               {getStageIcon(currentProgress.stage)}
               <Typography variant="h6" component="h3" sx={{ ml: 1, flexGrow: 1 }}>
-                {getStageLabel(currentProgress.stage)}
+                {currentProgress.stage === 'processing-images' 
+                  ? `Processing Images (${currentProgress.message.split(' ')[2]}/${currentProgress.message.split(' ')[4]})`
+                  : getStageLabel(currentProgress.stage)}
               </Typography>
               <Chip 
                 label={`${formatTime(timeElapsed)}`}
@@ -306,7 +308,13 @@ const ProcessingStatus: React.FC<ProcessingStatusProps> = ({
               />
               {currentProgress.detail && (
                 <>
-                  <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1 }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1 }}>
+                    {/* Hide redundant processing message if it's already in the heading */}
+                    {currentProgress.stage !== 'processing-images' && (
+                      <Typography variant="body2" color="text.secondary">
+                        {currentProgress.message}
+                      </Typography>
+                    )}
                     <IconButton
                       size="small"
                       onClick={handleExpandClick}
@@ -319,7 +327,7 @@ const ProcessingStatus: React.FC<ProcessingStatusProps> = ({
                     </IconButton>
                   </Box>
                   <Collapse in={expanded}>
-                    <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 1, whiteSpace: 'pre-line' }}>
                       {currentProgress.detail}
                     </Typography>
                   </Collapse>
