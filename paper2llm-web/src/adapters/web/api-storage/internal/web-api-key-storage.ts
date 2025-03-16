@@ -58,7 +58,7 @@ export class WebApiKeyStorage implements ApiKeyStorage {
 
   /**
    * Current storage version, incremented for the cryptographic upgrade
-   * 
+   *
    * Version 4 incorporates:
    * - AES-GCM authenticated encryption for key security
    * - PBKDF2 key derivation with high iteration count
@@ -129,7 +129,7 @@ export class WebApiKeyStorage implements ApiKeyStorage {
     const {
       password,
       storageType = "local",
-      expiration = "never",
+      expiration = "session",
       provider = defaultProviderId,
     } = options;
 
@@ -161,7 +161,7 @@ export class WebApiKeyStorage implements ApiKeyStorage {
     }
 
     const storage = this.storageOperations.getStorage(storageType);
-    
+
     try {
       // Use the new cryptoUtils for secure encryption
       const encryptedKeyData = await cryptoUtils.encryptApiKey(
@@ -210,7 +210,7 @@ export class WebApiKeyStorage implements ApiKeyStorage {
       if (error instanceof ApiKeyStorageError) {
         throw error;
       }
-      
+
       throw new ApiKeyStorageError(
         "Failed to securely store API key. Your browser may not support the required cryptographic features."
       );
@@ -292,21 +292,21 @@ export class WebApiKeyStorage implements ApiKeyStorage {
         this.validateApiKey.bind(this),
         defaultProviderId
       );
-      
+
       return decryptedKey;
     } catch (error) {
       // Pass through ApiKeyStorageError instances
       if (error instanceof ApiKeyStorageError) {
         throw error;
       }
-      
+
       // Check for browser compatibility issues
       if (!cryptoUtils.isWebCryptoAvailable()) {
         throw new ApiKeyStorageError(
           "Your browser doesn't support the required cryptographic features. Please use a modern browser."
         );
       }
-      
+
       // Generic error with more helpful message
       throw new ApiKeyStorageError(
         "Failed to decrypt API key. The password may be incorrect or the data may be corrupted."

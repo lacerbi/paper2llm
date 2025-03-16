@@ -15,7 +15,7 @@ export type ApiKeyStorageType = 'local' | 'session';
 /**
  * Expiration options for API keys
  */
-export type ApiKeyExpiration = 'session' | '1day' | '7days' | '30days' | 'never';
+export type ApiKeyExpiration = 'session' | '1day' | '7days' | '30days' | '90days';
 
 /**
  * Options for storing API keys

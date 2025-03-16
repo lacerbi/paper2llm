@@ -1,5 +1,6 @@
 // AI Summary: Hook for managing API key security settings including expiration and lockout.
 // Handles temporary lockout with countdown timer after failed authentication attempts.
+// Uses tiered expiration options (session, 1/7/30/90 days) for key security.
 
 import { useState, useEffect, useCallback } from 'react';
 import { ApiKeyExpiration } from '../../../../types/interfaces';

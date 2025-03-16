@@ -68,7 +68,7 @@ const SecurityOptions: React.FC<SecurityOptionsProps> = ({
               <MenuItem value="1day">1 Day</MenuItem>
               <MenuItem value="7days">7 Days</MenuItem>
               <MenuItem value="30days">30 Days</MenuItem>
-              <MenuItem value="never">Never expire</MenuItem>
+              <MenuItem value="90days">90 Days</MenuItem>
             </Select>
 
             {expiration !== "session" && (
