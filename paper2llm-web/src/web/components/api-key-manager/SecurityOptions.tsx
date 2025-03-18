@@ -83,7 +83,7 @@ const SecurityOptions: React.FC<SecurityOptionsProps> = ({
             />
             <Tooltip title="Guide on API Key Security in paper2llm">
               <Link
-                href="https://github.com/lacerbi/paper2llm/main/security-info/paper2llm-web/docs/security"
+                href="https://github.com/lacerbi/paper2llm/blob/main/paper2llm-web/docs/security/README.md"
                 target="_blank"
                 rel="noopener noreferrer"
                 variant="body2"
