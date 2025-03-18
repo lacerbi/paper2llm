@@ -12,6 +12,7 @@ Convert PDFs with a focus on academic papers into human-and-LLM-friendly **text-
 
 - You need a Mistral AI [API key](https://console.mistral.ai/api-keys) to use `paper2llm`. Their [free API tier](https://docs.mistral.ai/deployment/laplateforme/tier/) is compatible with `paper2llm`, within rate limits.
 - For the image-to-text conversion, multiple providers are supported.
+- You should read the [API Keys Security Guide](https://github.com/lacerbi/paper2llm/blob/main/paper2llm-web/docs/security/README.md) before using the app with your API keys.
 
 ### Credits
 
