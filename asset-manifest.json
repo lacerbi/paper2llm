@@ -1,13 +1,13 @@
 {
   "files": {
     "main.css": "/paper2llm/static/css/main.68587ef1.css",
-    "main.js": "/paper2llm/static/js/main.2279fae6.js",
+    "main.js": "/paper2llm/static/js/main.d862ffd4.js",
     "index.html": "/paper2llm/index.html",
     "main.68587ef1.css.map": "/paper2llm/static/css/main.68587ef1.css.map",
-    "main.2279fae6.js.map": "/paper2llm/static/js/main.2279fae6.js.map"
+    "main.d862ffd4.js.map": "/paper2llm/static/js/main.d862ffd4.js.map"
   },
   "entrypoints": [
     "static/css/main.68587ef1.css",
-    "static/js/main.2279fae6.js"
+    "static/js/main.d862ffd4.js"
   ]
 }
