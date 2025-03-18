@@ -2,13 +2,13 @@
 
 ## Introduction
 
-`paper2llm` requires API keys from services like [Mistral AI](https://mistral.ai/) and other providers to function. This guide explains how we protect your API keys, the inherent limitations of browser-based security, and recommendations for keeping your keys safe.
+`paper2llm` requires API keys from services like [Mistral AI](https://mistral.ai/) and other AI providers to function. This guide explains how we protect your API keys, the inherent limitations of browser-based security, and recommendations for keeping your keys safe.
 
 `paper2llm` is a client-side web application hosted on GitHub Pages. This means:
 
 - All processing happens entirely in your browser
-- **Your data and API keys are not sent to us in any way** (as we don't operate any any servers)
-- However, your PDF content and API keys are sent to the third-party AI providers (Mistral AI, Google, etc.) as required for the app's functionality
+- **Your data and API keys are not sent to us in any way** (as we don't operate any servers)
+- However, your PDF content and API keys are sent to the third-party AI providers (Mistral AI, OpenAI, etc.) as required for the app's functionality
 - All code is open source and can be audited in [our GitHub repository](https://github.com/lacerbi/paper2llm)
 - The application code is delivered as fixed files from the [deployment branch](https://github.com/lacerbi/paper2llm/tree/gh-pages) of the repository
 
@@ -19,7 +19,7 @@
 Instead:
 
 - Use free-tier API keys whenever possible
-- Create dedicated API keys specifically for `paper2llm` with spending caps enabled
+- Create dedicated API keys specifically for `paper2llm` with spending caps enabled and fixed-term expiration dates
 - NEVER enter API keys with access to substantial credit or production systems
 
 ## Security Measures We've Implemented
