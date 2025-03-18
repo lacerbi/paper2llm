@@ -1,7 +1,7 @@
 // AI Summary: Displays and manages API key security settings including storage type and expiration.
 // Shows warning messages for security requirements and includes lockout information with alerts.
 
-import React from 'react';
+import React from "react";
 import {
   Box,
   Typography,
@@ -15,15 +15,16 @@ import {
   SelectChangeEvent,
   Grid,
   Button,
-  Chip
-} from '@mui/material';
+  Chip,
+  Link,
+} from "@mui/material";
 import {
   Info as InfoIcon,
   Lock as LockIcon,
   Warning as WarningIcon,
-  AccessTime as AccessTimeIcon
-} from '@mui/icons-material';
-import { ApiKeyExpiration } from '../../../types/interfaces';
+  AccessTime as AccessTimeIcon,
+} from "@mui/icons-material";
+import { ApiKeyExpiration } from "../../../types/interfaces";
 
 interface SecurityOptionsProps {
   expiration: ApiKeyExpiration;
@@ -51,21 +52,52 @@ const SecurityOptions: React.FC<SecurityOptionsProps> = ({
   incorrectAttempts = 0,
   formatLockoutTime = (seconds) => `${seconds} seconds`,
   onExpirationChange,
-  onClearLockout
+  onClearLockout,
 }) => {
   return (
     <Box sx={{ mt: 2, mb: 1 }}>
       <Grid
         container
         alignItems="center"
-        justifyContent="flex-end"
+        justifyContent="space-between"
         sx={{ mb: 1 }}
       >
         <Grid item>
+          <Box
+            sx={{
+              border: "1px solid",
+              borderColor: "grey.300",
+              borderRadius: 1,
+              p: 0.5,
+              display: "inline-block",
+              mr: 2,
+            }}
+          >
+            <WarningIcon
+              sx={{
+                fontSize: "1.5rem",
+                mr: 0.5,
+                color: "warning.main",
+                verticalAlign: "middle",
+              }}
+            />
+            <Tooltip title="Guide on API Key Security in paper2llm">
+              <Link
+                href="https://github.com/lacerbi/paper2llm/main/security-info/paper2llm-web/docs/security"
+                target="_blank"
+                rel="noopener noreferrer"
+                variant="body2"
+                underline="hover"
+                sx={{ fontWeight: "bold" }}
+              >
+                API Keys Security Info
+              </Link>
+            </Tooltip>
+          </Box>
+        </Grid>
+        <Grid item>
           <Stack direction="row" spacing={1} alignItems="center">
-            <Typography variant="body2">
-              Storage & Expiration:
-            </Typography>
+            <Typography variant="body2">Storage & Expiration:</Typography>
             <Tooltip title="Keys are only shared with LLM providers and stored encrypted. We recommend temporary session-only storage. There is the option of password-protected persistent storage with an expiration date.">
               <IconButton size="small" color="primary">
                 <InfoIcon fontSize="small" />
@@ -95,53 +127,53 @@ const SecurityOptions: React.FC<SecurityOptionsProps> = ({
       </Grid>
 
       {/* Security Warning - show password requirements for persistent storage */}
-      {expiration !== "session" &&
-        (!password || passwordError) && (
-          <Alert severity="warning" sx={{ mt: 2 }} icon={<LockIcon />}>
-            <AlertTitle>Password Requirements</AlertTitle>
-            A strong password is required when storing API keys persistently:
-            <ul>
-              <li>At least 8 characters long</li>
-              <li>
-                Must contain at least two different types of characters
-                (letters, digits, special characters)
-              </li>
-            </ul>
-            This ensures your API key remains securely encrypted between
-            browser sessions.
-          </Alert>
-        )}
+      {expiration !== "session" && (!password || passwordError) && (
+        <Alert severity="warning" sx={{ mt: 2 }} icon={<LockIcon />}>
+          <AlertTitle>Password Requirements</AlertTitle>A strong password is
+          required when storing API keys persistently:
+          <ul>
+            <li>At least 8 characters long</li>
+            <li>
+              Must contain at least two different types of characters (letters,
+              digits, special characters)
+            </li>
+          </ul>
+          This ensures your API key remains securely encrypted between browser
+          sessions.
+        </Alert>
+      )}
 
       {/* Display lockout information */}
       {isLocked && (
-        <Alert 
-          severity={isExtendedLockout ? "error" : "warning"} 
-          sx={{ mt: 2 }} 
+        <Alert
+          severity={isExtendedLockout ? "error" : "warning"}
+          sx={{ mt: 2 }}
           icon={isExtendedLockout ? <AccessTimeIcon /> : <WarningIcon />}
         >
           <AlertTitle>
             {isExtendedLockout ? "Extended Lockout" : "Temporary Lockout"}
             {incorrectAttempts > 0 && (
-              <Chip 
-                label={`${incorrectAttempts} failed attempts`} 
-                size="small" 
+              <Chip
+                label={`${incorrectAttempts} failed attempts`}
+                size="small"
                 color={isExtendedLockout ? "error" : "warning"}
                 sx={{ ml: 1 }}
               />
             )}
           </AlertTitle>
-          
+
           {isExtendedLockout ? (
             <Box>
               <Typography variant="body2" sx={{ mb: 1 }}>
-                Your account has been locked for 24 hours due to too many failed authentication attempts.
-                This is a security measure to prevent brute force attacks.
+                Your account has been locked for 24 hours due to too many failed
+                authentication attempts. This is a security measure to prevent
+                brute force attacks.
               </Typography>
               {onClearLockout && (
-                <Button 
-                  variant="outlined" 
-                  color="error" 
-                  size="small" 
+                <Button
+                  variant="outlined"
+                  color="error"
+                  size="small"
                   onClick={onClearLockout}
                   sx={{ mt: 1 }}
                 >
@@ -151,8 +183,9 @@ const SecurityOptions: React.FC<SecurityOptionsProps> = ({
             </Box>
           ) : (
             <Typography variant="body2">
-              For security reasons, authentication has been locked for {formatLockoutTime(lockCountdown)}.
-              Please wait before trying again.
+              For security reasons, authentication has been locked for{" "}
+              {formatLockoutTime(lockCountdown)}. Please wait before trying
+              again.
             </Typography>
           )}
         </Alert>
