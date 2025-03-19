@@ -1,4 +1,4 @@
-# paper2llm 📄→✨
+# `paper2llm` 📄→✨
 
 Convert PDFs with a focus on academic papers into human-and-LLM-friendly **text-only Markdown files**.
 
@@ -12,22 +12,26 @@ Convert PDFs with a focus on academic papers into human-and-LLM-friendly **text-
 
 - You need a Mistral AI [API key](https://console.mistral.ai/api-keys) to use `paper2llm`. Their [free API tier](https://docs.mistral.ai/deployment/laplateforme/tier/) is compatible with `paper2llm`, within rate limits.
 - For the image-to-text conversion, multiple providers are supported.
-- You should read the [API Keys Security Guide](https://github.com/lacerbi/paper2llm/blob/main/paper2llm-web/docs/security/README.md) before using the app with your API keys.
+- **You should read the [API Keys Security Guide](https://github.com/lacerbi/paper2llm/blob/main/paper2llm-web/docs/security/README.md) before using the app with your API keys.**
 
 ### Credits
 
 `paper2llm` was written by [Luigi Acerbi](https://lacerbi.github.io/) using [Claude 3.7 Sonnet](https://www.anthropic.com/news/claude-3-7-sonnet) and Athanor. 
 You can follow me on [X](https://x.com/AcerbiLuigi) and [Bluesky](https://bsky.app/profile/lacerbi.bsky.social).
 
-## Image descriptions
+## Image Descriptions and Vision Models
 
-After the OCR step, figures are converted to a Markdown text description using vision models such as Mistral AI's [Pixtral 12B](https://mistral.ai/en/news/pixtral-12b) or Google's [Gemini 2.0 Flash](https://deepmind.google/technologies/gemini/flash/). 
+After the OCR step, figures are converted to a Markdown text description using vision models such as Mistral AI's [Pixtral 12B](https://mistral.ai/en/news/pixtral-12b) or Google's [Gemini 2.0 Flash](https://deepmind.google/technologies/gemini/flash/). You can select the desired vision model via a dropdown menu, based on which API keys you entered.
 
-- You can select the desired model via a dropdown menu, based on which API keys you entered. Both Mistral AI and Google Gemini offer a free API tier.
-- The free Mistral AI model, Pixtral 12B, is a fantastic model for its size, but might not be best suited for understanding complex diagrams and concepts.
+<details>
+<summary>Notes on vision models choice.</summary>
+  
+- Both Mistral AI and Google Gemini offer a **free API tier**.
+- **Gemini 2.0 Flash** is our currently recommended model for `paper2llm`. It is included in the [Gemini API free tier](https://ai.google.dev/gemini-api/docs/pricing) or otherwise very cheap, and has excellent performance.
+- The free Mistral AI model, Pixtral 12B, is an excellent model for its size, but might not be best suited for understanding complex diagrams and concepts.
 - [Pixtral Large](https://mistral.ai/en/news/pixtral-large) may work better, but you may need API credits. It's unclear if Pixtral Large is available on the free API tier - the API call is not rejected, but it might redirect to Pixtral 12B.
-- Gemini 2.0 Flash does a good job and is included in the [Gemini API free tier](https://ai.google.dev/gemini-api/docs/pricing) or otherwise very cheap.
 - Other premium models such as OpenAI's GPT-4o, Anthropic's Claude Sonnet 3.7 or Google Gemini 2.0 Pro might work better for complex figures, but beware of API costs.
+</details>
 
 ## Disclaimers
 
