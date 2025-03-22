@@ -393,7 +393,10 @@ const App: React.FC = () => {
                                   ) : (
                                     // For all other models, show provider prefix and highlight default models
                                     <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                                      <Tooltip title={model.description || "No description available"}>
+                                      <Tooltip 
+                                        title={model.description || "No description available"}
+                                        placement="right-start"
+                                      >
                                         <span>
                                           {`${PROVIDER_INFO[model.provider].name}: ${model.name} (${model.id})`}
                                         </span>
