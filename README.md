@@ -21,15 +21,15 @@ You can follow me on [X](https://x.com/AcerbiLuigi) and [Bluesky](https://bsky.a
 
 ## Image Descriptions and Vision Models
 
-After the OCR step, figures are converted to a Markdown text description using vision models such as Mistral AI's [Pixtral 12B](https://mistral.ai/en/news/pixtral-12b) or Google's [Gemini 2.0 Flash](https://deepmind.google/technologies/gemini/flash/). You can select the desired vision model via a dropdown menu, based on which API keys you entered.
+After the OCR step, figures are converted to a Markdown text description using vision models such as Mistral AI's [Mistral Small](https://mistral.ai/news/mistral-small-3-1) or Google's [Gemini 2.0 Flash](https://deepmind.google/technologies/gemini/flash/). You can select the desired vision model via a dropdown menu, based on which API keys you entered.
 
 <details>
 <summary>Notes on vision models choice.</summary>
   
 - Both Mistral AI and Google Gemini offer a **free API tier**.
-- **Gemini 2.0 Flash** is our currently recommended model for `paper2llm`. It is included in the [Gemini API free tier](https://ai.google.dev/gemini-api/docs/pricing) or otherwise very cheap, and has excellent performance.
-- The free Mistral AI model, Pixtral 12B, is an excellent model for its size, but might not be best suited for understanding complex diagrams and concepts.
-- [Pixtral Large](https://mistral.ai/en/news/pixtral-large) may work better, but you may need API credits. It's unclear if Pixtral Large is available on the free API tier - the API call is not rejected, but it might redirect to Pixtral 12B.
+- [**Gemini 2.0 Flash**](https://deepmind.google/technologies/gemini/flash/) is our currently recommended model for `paper2llm`. It is included in the [Gemini API free tier](https://ai.google.dev/gemini-api/docs/pricing) or otherwise very cheap, and shows very good performance.
+- If you prefer to stick to only using the Mistral AI API, the default free Mistral AI model, [Mistral Small](https://mistral.ai/news/mistral-small-3-1), is a top-performing model in its size category and works generally well.
+- [Pixtral Large](https://mistral.ai/en/news/pixtral-large) may work better for understanding complex diagrams and concepts, but it's a premier model; the API call is not rejected, but it might redirect to a free model if no API credits are available.
 - Other premium models such as OpenAI's GPT-4o, Anthropic's Claude Sonnet 3.7 or Google Gemini 2.0 Pro might work better for complex figures, but beware of API costs.
 </details>
 
