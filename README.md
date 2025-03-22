@@ -7,6 +7,8 @@ Convert PDFs with a focus on academic papers into human-and-LLM-friendly **text-
 - Text, tables and equations are parsed using [Mistral OCR](https://mistral.ai/en/news/mistral-ocr).
 - Figures are converted to a textual description using a selected vision model (see below).
 - Additional postprocessing is available, such as splitting the file into multiple parts (main, appendix, backmatter) and fetching a bibtex.
+- **Example:** We converted all [our research group](https://www.helsinki.fi/en/researchgroups/machine-and-human-intelligence) papers to Markdown in [this repo](https://github.com/acerbilab/pubs-llms).
+
 
 ### Requirements
 
