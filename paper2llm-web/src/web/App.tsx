@@ -24,6 +24,7 @@ import {
   Tooltip,
 } from "@mui/material";
 import InfoIcon from "@mui/icons-material/Info";
+import StarIcon from "@mui/icons-material/Star";
 import FileUploader from "./components/FileUploader";
 import ApiKeyManager from "./components/ApiKeyManager";
 import ProcessingStatus from "./components/ProcessingStatus";
@@ -386,13 +387,28 @@ const App: React.FC = () => {
                             ) : (
                               availableModels.map((model) => (
                                 <MenuItem key={model.id} value={model.id}>
-                                  {model.id === NONE_OPTION_ID
-                                    ? // For the "None" option, don't show provider prefix
-                                      `${model.name}`
-                                    : // For all other models, show provider prefix
-                                      `${PROVIDER_INFO[model.provider].name}: ${
-                                        model.name
-                                      } (${model.id})`}
+                                  {model.id === NONE_OPTION_ID ? (
+                                    // For the "None" option, don't show provider prefix
+                                    model.name
+                                  ) : (
+                                    // For all other models, show provider prefix and highlight default models
+                                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                      <Tooltip title={model.description || "No description available"}>
+                                        <span>
+                                          {`${PROVIDER_INFO[model.provider].name}: ${model.name} (${model.id})`}
+                                        </span>
+                                      </Tooltip>
+                                      {model.id === multiProviderImageService.getDefaultModel(model.provider) && (
+                                        <Tooltip title="Default model for this provider">
+                                          <StarIcon 
+                                            fontSize="small" 
+                                            color="primary" 
+                                            sx={{ ml: 0.5 }}
+                                          />
+                                        </Tooltip>
+                                      )}
+                                    </Box>
+                                  )}
                                 </MenuItem>
                               ))
                             )}

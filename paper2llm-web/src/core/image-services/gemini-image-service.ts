@@ -21,7 +21,7 @@ export class GeminiImageService extends BaseImageService {
       id: "gemini-2.0-flash",
       name: "Gemini 2.0 Flash",
       description:
-        "Fast and efficient vision model for general-purpose image understanding",
+        "Next-gen vision model for general-purpose image understanding",
       provider: "gemini",
       maxTokens: this.DEFAULT_FAST_MODEL_TOKENS,
     },
@@ -79,7 +79,10 @@ export class GeminiImageService extends BaseImageService {
    * Builds a prompt for the Vision API based on the context
    * Uses the standardized template from image-prompt-template.ts
    */
-  protected buildImagePrompt(contextText?: string, provider?: ApiProvider): string {
+  protected buildImagePrompt(
+    contextText?: string,
+    provider?: ApiProvider
+  ): string {
     return formatImagePrompt(contextText);
   }
 
@@ -162,7 +165,8 @@ export class GeminiImageService extends BaseImageService {
 
       // Find the model info to get max tokens
       const modelInfo = this.modelInfos.find((m) => m.id === selectedModel);
-      const maxTokens = modelInfo?.maxTokens || this.DEFAULT_PREMIUM_MODEL_TOKENS;
+      const maxTokens =
+        modelInfo?.maxTokens || this.DEFAULT_PREMIUM_MODEL_TOKENS;
 
       // Create the request URL - Gemini requires model in URL
       const requestUrl = `/${selectedModel}:generateContent?key=${apiKey}`;
@@ -213,7 +217,11 @@ export class GeminiImageService extends BaseImageService {
           if (statusCode === 429) {
             const retryable = retryCount < this.maxRetries;
             throw new ImageProcessingError(
-              `Gemini API rate limit exceeded. ${retryable ? 'Will retry after cooling period.' : 'Maximum retries reached.'}`,
+              `Gemini API rate limit exceeded. ${
+                retryable
+                  ? "Will retry after cooling period."
+                  : "Maximum retries reached."
+              }`,
               "rate_limit",
               retryable
             );
@@ -280,7 +288,11 @@ export class GeminiImageService extends BaseImageService {
           .join("\n");
 
         const rawDescription = textParts.trim();
-        return this.processDescriptionResponse(rawDescription, image.id, retryCount);
+        return this.processDescriptionResponse(
+          rawDescription,
+          image.id,
+          retryCount
+        );
       } else {
         throw new ImageProcessingError(
           "Invalid response format from Gemini API",
@@ -300,20 +312,22 @@ export class GeminiImageService extends BaseImageService {
 
       // Handle retryable errors
       if (error instanceof ImageProcessingError && error.retryable) {
-        const isRateLimit = error.type === 'rate_limit';
+        const isRateLimit = error.type === "rate_limit";
         const delay = this.getRetryDelay(error.type, retryCount);
-        
+
         console.log(
           `Retrying image ${image.id} description (attempt ${
             retryCount + 1
           } of ${this.maxRetries})${
-            isRateLimit ? ' - Rate limit exceeded, waiting longer before retry' : ''
+            isRateLimit
+              ? " - Rate limit exceeded, waiting longer before retry"
+              : ""
           }`
         );
-        
+
         // Wait before retry with appropriate delay
         await new Promise((resolve) => setTimeout(resolve, delay));
-        
+
         return this.describeImage(
           image,
           apiKey,

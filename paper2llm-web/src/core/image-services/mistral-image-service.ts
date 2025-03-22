@@ -20,7 +20,7 @@ export class MistralImageService extends BaseImageService {
     {
       id: "pixtral-12b-2409",
       name: "Pixtral",
-      description: "Standard vision model for most use cases",
+      description: "Standard vision model for simple use cases (free tier)",
       provider: "mistral",
       maxTokens: this.DEFAULT_FAST_MODEL_TOKENS,
     },
@@ -28,14 +28,14 @@ export class MistralImageService extends BaseImageService {
       id: "mistral-small-latest",
       name: "Mistral Small",
       description:
-        "A new leader in the small models category with image understanding capabilities",
+        "A new leader among small models with image understanding (free tier)",
       provider: "mistral",
       maxTokens: this.DEFAULT_FAST_MODEL_TOKENS,
     },
     {
       id: "pixtral-large-latest",
       name: "Pixtral Large",
-      description: "Enhanced vision model with higher detail capability",
+      description: "Frontier-class multimodal model (premier tier)",
       provider: "mistral",
       maxTokens: this.DEFAULT_PREMIUM_MODEL_TOKENS,
     },
