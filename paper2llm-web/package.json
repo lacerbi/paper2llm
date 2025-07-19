@@ -1,6 +1,6 @@
 {
   "name": "paper2llm",
-  "version": "0.6.3",
+  "version": "0.6.4",
   "private": true,
   "homepage": "https://lacerbi.github.io/paper2llm",
   "dependencies": {
@@ -53,5 +53,12 @@
   },
   "devDependencies": {
     "gh-pages": "^6.3.0"
+  },
+  "overrides": {
+    "nth-check": "^2.0.1",
+    "postcss": "^8.4.31",
+    "webpack-dev-server": "^4.15.2",
+    "svgo": "^2.8.0",
+    "resolve-url-loader": "^5.0.0"
   }
 }
