@@ -18,35 +18,42 @@ export class GeminiImageService extends BaseImageService {
   // Available Gemini Vision models
   private readonly modelInfos: VisionModelInfo[] = [
     {
+      id: "gemini-2.5-pro",
+      name: "Gemini 2.5 Pro",
+      description:
+        "Most advanced Gemini model for complex reasoning and multimodal tasks",
+      provider: "gemini",
+      maxTokens: 65536,
+    },
+    {
+      id: "gemini-2.5-flash",
+      name: "Gemini 2.5 Flash",
+      description:
+        "Fast, efficient model with large context and reasoning capabilities",
+      provider: "gemini",
+      maxTokens: 65536,
+    },
+    {
+      id: "gemini-2.5-flash-lite-preview-06-17",
+      name: "Gemini 2.5 Flash-Lite Preview",
+      description:
+        "Smallest and most cost effective model, built for at scale usage",
+      provider: "gemini",
+      maxTokens: 64000,
+    },
+    {
       id: "gemini-2.0-flash",
       name: "Gemini 2.0 Flash",
-      description:
-        "Next-gen vision model for general-purpose image understanding",
+      description: "High-performance model with multimodal capabilities",
       provider: "gemini",
-      maxTokens: this.DEFAULT_FAST_MODEL_TOKENS,
+      maxTokens: 8192,
     },
     {
       id: "gemini-2.0-flash-lite",
       name: "Gemini 2.0 Flash Lite",
-      description:
-        "Lightweight version optimized for speed and lower resource usage",
+      description: "Lightweight version of Gemini 2.0 Flash",
       provider: "gemini",
-      maxTokens: this.DEFAULT_FAST_MODEL_TOKENS,
-    },
-    {
-      id: "gemini-2.0-flash-thinking-exp",
-      name: "Gemini 2.0 Flash Thinking",
-      description: "Experimental model with enhanced reasoning capabilities",
-      provider: "gemini",
-      maxTokens: this.DEFAULT_FAST_MODEL_TOKENS,
-    },
-    {
-      id: "gemini-2.0-pro-exp",
-      name: "Gemini 2.0 Pro",
-      description:
-        "Advanced vision model with high-quality image understanding",
-      provider: "gemini",
-      maxTokens: this.DEFAULT_PREMIUM_MODEL_TOKENS,
+      maxTokens: 8192,
     },
   ];
 
@@ -72,7 +79,7 @@ export class GeminiImageService extends BaseImageService {
     if (provider !== "gemini") {
       return "";
     }
-    return "gemini-2.0-flash"; // Use flash as the default model
+    return "gemini-2.5-flash"; // Use flash 2.5 as the default model
   }
 
   /**
