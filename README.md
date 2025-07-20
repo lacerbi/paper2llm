@@ -17,7 +17,8 @@ Convert PDFs with a focus on academic papers into human-and-LLM-friendly **text-
 
 ### Credits
 
-`paper2llm` was written by [Luigi Acerbi](https://lacerbi.github.io/) using [Claude 3.7 Sonnet](https://www.anthropic.com/news/claude-3-7-sonnet) and Athanor.
+`paper2llm` was initially written by [Luigi Acerbi](https://lacerbi.github.io/) using [Claude 3.7 Sonnet](https://www.anthropic.com/news/claude-3-7-sonnet) and [Athanor](https://github.com/lacerbi/athanor). Subsequent revisions are done with whatever the state-of-the-art coding assistant and agent is at the moment (e.g., [Claude Code](https://www.anthropic.com/claude-code)).
+
 You can follow me on [X](https://x.com/AcerbiLuigi) and [Bluesky](https://bsky.app/profile/lacerbi.bsky.social).
 
 ## Image Descriptions and Vision Models
