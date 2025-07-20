@@ -31,7 +31,7 @@ After the OCR step, figures are converted to a Markdown text description using v
 - [**Gemini 2.5 Flash**](https://deepmind.google/technologies/gemini/flash/) is our currently recommended model for `paper2llm`. It is included in the [Gemini API free tier](https://ai.google.dev/gemini-api/docs/pricing) or otherwise very cheap, and shows very good performance.
 - If you prefer to stick to only using the Mistral AI API, the default free Mistral AI model, [Mistral Small](https://mistral.ai/news/mistral-small-3-1), is a top-performing model in its size category and works generally well.
 - [Pixtral Large](https://mistral.ai/en/news/pixtral-large) may work better for understanding complex diagrams and concepts, but it's a premier model; the API call is not rejected, but it might redirect to a free model if no API credits are available.
-- Other premium models such as OpenAI's GPT-4o, Anthropic's Claude Sonnet 3.7 or Google Gemini 2.0 Pro might work better for complex figures, but beware of API costs.
+- Other premium models such as OpenAI's GPT-4o, Anthropic's Claude Sonnet 4 or Google Gemini 2.5 Pro might work better for complex figures, but beware of API costs.
 </details>
 
 ## Disclaimers
