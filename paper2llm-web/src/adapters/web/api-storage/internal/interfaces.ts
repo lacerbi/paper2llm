@@ -5,7 +5,6 @@ import {
   ApiProvider,
   ApiKeyStorageType,
   ApiKeyExpiration,
-  ApiKeyStorageOptions,
 } from "../api-key-storage";
 
 /**

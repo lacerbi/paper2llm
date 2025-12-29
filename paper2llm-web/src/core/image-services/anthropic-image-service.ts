@@ -1,7 +1,7 @@
 // AI Summary: Anthropic-specific implementation of the image description service.
 // Handles API communication with Anthropic's Claude models for image analysis using the official SDK.
 // Includes model validation, error handling, and response processing.
-// Uses Claude 3.7 Sonnet and 3.5 Haiku models with appropriate API formatting.
+// Uses Claude 4.5 Sonnet and Haiku models with appropriate API formatting.
 
 import Anthropic from '@anthropic-ai/sdk';
 import { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages';
@@ -19,24 +19,20 @@ export class AnthropicImageService extends BaseImageService {
   // Available Anthropic Vision models
   private readonly modelInfos: VisionModelInfo[] = [
     {
-      id: "claude-3-7-sonnet-latest",
-      name: "Claude 3.7 Sonnet",
-      description: "Intelligence and speed for high-quality image analysis",
+      id: "claude-sonnet-4-5-20250929",
+      name: "Claude 4.5 Sonnet",
+      description: "Smart model for complex agents and high-quality image analysis",
       provider: "anthropic",
       maxTokens: this.DEFAULT_PREMIUM_MODEL_TOKENS,
     },
     {
-      id: "claude-3-5-haiku-latest",
-      name: "Claude 3.5 Haiku",
-      description: "Fastest model for efficient image understanding",
+      id: "claude-haiku-4-5-20251001",
+      name: "Claude 4.5 Haiku",
+      description: "Fastest model with near-frontier intelligence",
       provider: "anthropic",
       maxTokens: this.DEFAULT_FAST_MODEL_TOKENS,
     },
   ];
-
-  constructor() {
-    super();
-  }
 
   /**
    * Returns the available Anthropic vision models
@@ -55,7 +51,7 @@ export class AnthropicImageService extends BaseImageService {
     if (provider !== "anthropic") {
       return "";
     }
-    return "claude-3-5-haiku-latest"; // Use haiku as the default model (balance of speed/quality)
+    return "claude-haiku-4-5-20251001"; // Use Haiku 4.5 as the default model (balance of speed/quality)
   }
 
   /**

@@ -4,7 +4,7 @@
 import { MarkdownSections } from "../../../../core/utils/markdown-splitter";
 import { generateBibTeXFromMarkdown, BibTeXGenerationResult } from "../../../../core/utils/bibtex-generator";
 import { SectionType, ImageMetrics } from "../types";
-import { PdfToMdResult, BibTeXTitleValidation } from "../../../../types/interfaces";
+import { PdfToMdResult } from "../../../../types/interfaces";
 
 /**
  * Gets content for a specific section of the markdown document

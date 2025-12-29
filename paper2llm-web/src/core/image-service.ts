@@ -2,15 +2,14 @@
 // Delegates to provider-specific implementations through a factory.
 // Maintains backward compatibility while supporting multiple providers.
 
-import { 
- ApiProvider, 
- ImageService, 
- OcrImage, 
- ProgressReporter, 
- VisionModelInfo 
+import {
+ ApiProvider,
+ ImageService,
+ OcrImage,
+ ProgressReporter,
+ VisionModelInfo
 } from "../types/interfaces";
 import { imageServiceFactory } from "./image-services/image-service-factory";
-import { ImageProcessingError } from "./image-services/base-image-service";
 
 /**
 * Re-export the custom error class

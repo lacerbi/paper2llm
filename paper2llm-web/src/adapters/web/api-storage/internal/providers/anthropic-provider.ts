@@ -2,7 +2,6 @@
 // Extends BaseProvider with Anthropic-specific behavior and validation patterns.
 
 import { BaseProvider } from "./base-provider";
-import { ApiProvider } from "../../api-key-storage";
 
 /**
  * Provider implementation for Anthropic API keys

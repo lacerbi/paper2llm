@@ -118,16 +118,24 @@ export class MistralOcrService implements OcrService {
         });
       }
       
+      // Build request payload
+      const payload: Record<string, unknown> = {
+        model: options.model || this.defaultModel,
+        document: {
+          type: 'document_url',
+          document_url: url
+        },
+        include_image_base64: options.includeImageBase64 !== false
+      };
+
+      // Add pages parameter if specified (for URL-based PDFs)
+      if (options.pages && options.pages.length > 0) {
+        payload.pages = options.pages;
+      }
+
       const response = await this.axiosInstance.post(
         '/ocr',
-        {
-          model: options.model || this.defaultModel,
-          document: {
-            type: 'document_url',
-            document_url: url
-          },
-          include_image_base64: options.includeImageBase64 !== false
-        },
+        payload,
         {
           headers: {
             'Content-Type': 'application/json',
@@ -155,13 +163,13 @@ export class MistralOcrService implements OcrService {
           message: 'Processing OCR results'
         });
       }
-      
+
       const ocrResult = this.processResponse(response);
-      
+
       if (progressReporter) {
         progressReporter.reportComplete(ocrResult);
       }
-      
+
       return ocrResult;
     } catch (error) {
       // Handle and transform error with the URL for context
@@ -364,17 +372,25 @@ export class MistralOcrService implements OcrService {
         processUrl = url.replace(/\/(abs|html)\//, '/pdf/');
         console.log(`Direct processing with converted arXiv URL: ${processUrl}`);
       }
-      
+
+      // Build request payload
+      const payload: Record<string, unknown> = {
+        model: options.model || this.defaultModel,
+        document: {
+          type: 'document_url',
+          document_url: processUrl
+        },
+        include_image_base64: options.includeImageBase64 !== false
+      };
+
+      // Add pages parameter if specified (for URL-based PDFs)
+      if (options.pages && options.pages.length > 0) {
+        payload.pages = options.pages;
+      }
+
       const response = await this.axiosInstance.post(
         '/ocr',
-        {
-          model: options.model || this.defaultModel,
-          document: {
-            type: 'document_url',
-            document_url: processUrl
-          },
-          include_image_base64: options.includeImageBase64 !== false
-        },
+        payload,
         {
           headers: {
             'Content-Type': 'application/json',

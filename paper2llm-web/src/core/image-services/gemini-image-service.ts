@@ -18,10 +18,26 @@ export class GeminiImageService extends BaseImageService {
   // Available Gemini Vision models
   private readonly modelInfos: VisionModelInfo[] = [
     {
+      id: "gemini-3-pro-preview",
+      name: "Gemini 3 Pro",
+      description:
+        "Most advanced reasoning model for complex multimodal tasks",
+      provider: "gemini",
+      maxTokens: 65536,
+    },
+    {
+      id: "gemini-3-flash-preview",
+      name: "Gemini 3 Flash",
+      description:
+        "Balanced model with frontier intelligence built for speed and scale",
+      provider: "gemini",
+      maxTokens: 65536,
+    },
+    {
       id: "gemini-2.5-pro",
       name: "Gemini 2.5 Pro",
       description:
-        "Most advanced Gemini model for complex reasoning and multimodal tasks",
+        "Advanced Gemini model for complex reasoning and multimodal tasks",
       provider: "gemini",
       maxTokens: 65536,
     },
@@ -40,20 +56,6 @@ export class GeminiImageService extends BaseImageService {
         "Smallest and most cost effective model, built for at scale usage",
       provider: "gemini",
       maxTokens: 64000,
-    },
-    {
-      id: "gemini-2.0-flash",
-      name: "Gemini 2.0 Flash",
-      description: "High-performance model with multimodal capabilities",
-      provider: "gemini",
-      maxTokens: 8192,
-    },
-    {
-      id: "gemini-2.0-flash-lite",
-      name: "Gemini 2.0 Flash Lite",
-      description: "Lightweight version of Gemini 2.0 Flash",
-      provider: "gemini",
-      maxTokens: 8192,
     },
   ];
 
@@ -79,7 +81,7 @@ export class GeminiImageService extends BaseImageService {
     if (provider !== "gemini") {
       return "";
     }
-    return "gemini-2.5-flash"; // Use flash 2.5 as the default model
+    return "gemini-3-flash-preview"; // Use Gemini 3 Flash as the default model
   }
 
   /**

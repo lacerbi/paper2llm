@@ -11,11 +11,9 @@ import {
   Container,
   Box,
   Paper,
-  Divider,
   Button,
   useTheme,
   FormControl,
-  FormHelperText,
   InputLabel,
   Select,
   MenuItem,
@@ -30,7 +28,7 @@ import ApiKeyManager from "./components/ApiKeyManager";
 import ProcessingStatus from "./components/ProcessingStatus";
 import MarkdownPreview from "./components/markdown-preview";
 import {
-  PdfFile,
+  PdfFileWithPageInfo,
   ProgressUpdate,
   PdfToMdResult,
   ApiProvider,
@@ -43,7 +41,7 @@ import { PROVIDER_INFO } from "./components/api-key-manager/constants";
 
 const App: React.FC = () => {
   const theme = useTheme();
-  const [pdfFile, setPdfFile] = useState<PdfFile | null>(null);
+  const [pdfFile, setPdfFile] = useState<PdfFileWithPageInfo | null>(null);
   const [apiKeys, setApiKeys] = useState<Record<ApiProvider, string>>({
     mistral: "",
     openai: "",
@@ -175,7 +173,7 @@ const App: React.FC = () => {
   };
 
   // Handle file selection
-  const handleFileSelected = useCallback((file: PdfFile) => {
+  const handleFileSelected = useCallback((file: PdfFileWithPageInfo) => {
     setPdfFile(file);
     setConversionResult(null);
     setProcessingError(null);
@@ -521,7 +519,7 @@ const App: React.FC = () => {
         }}
       >
         <Typography variant="body2" sx={{ mb: 1 }}>
-          © 2025 paper2llm v{packageInfo.version} - MIT License |{" "}
+          © 2025 paper2llm v{packageInfo.version} (updated {packageInfo.lastUpdated}) - MIT License |{" "}
           <a
             href="https://github.com/lacerbi/paper2llm"
             target="_blank"
@@ -547,6 +545,15 @@ const App: React.FC = () => {
             style={{ color: theme.palette.primary.main }}
           >
             X
+          </a>{" "}
+          |{" "}
+          <a
+            href="https://www.linkedin.com/in/luigi-acerbi-719b492/"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: theme.palette.primary.main }}
+          >
+            LinkedIn
           </a>{" "}
           |
           <a

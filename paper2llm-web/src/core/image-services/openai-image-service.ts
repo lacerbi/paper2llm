@@ -18,11 +18,18 @@ export class OpenAIImageService extends BaseImageService {
   // Available OpenAI Vision models
   private readonly modelInfos: VisionModelInfo[] = [
     {
-      id: "gpt-4o",
-      name: "GPT-4o",
-      description: "Latest vision model with high-quality image understanding",
+      id: "gpt-5",
+      name: "GPT-5",
+      description: "Advanced model for coding, reasoning, and image analysis",
       provider: "openai",
       maxTokens: this.DEFAULT_PREMIUM_MODEL_TOKENS,
+    },
+    {
+      id: "gpt-5-mini",
+      name: "GPT-5 Mini",
+      description: "Fast, cost-efficient model with vision capabilities",
+      provider: "openai",
+      maxTokens: this.DEFAULT_FAST_MODEL_TOKENS,
     },
   ];
 
@@ -48,7 +55,7 @@ export class OpenAIImageService extends BaseImageService {
     if (provider !== "openai") {
       return "";
     }
-    return "gpt-4o";
+    return "gpt-5-mini"; // Use GPT-5 Mini as default (balance of speed/cost)
   }
 
   /**

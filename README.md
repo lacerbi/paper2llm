@@ -17,22 +17,21 @@ Convert PDFs with a focus on academic papers into human-and-LLM-friendly **text-
 
 ### Credits
 
-`paper2llm` was initially written by [Luigi Acerbi](https://lacerbi.github.io/) using [Claude 3.7 Sonnet](https://www.anthropic.com/news/claude-3-7-sonnet) and [Athanor](https://github.com/lacerbi/athanor). Subsequent revisions are done with whatever the state-of-the-art coding assistant and agent is at the moment (e.g., [Claude Code](https://www.anthropic.com/claude-code)).
-
-You can follow me on [X](https://x.com/AcerbiLuigi) and [Bluesky](https://bsky.app/profile/lacerbi.bsky.social).
+`paper2llm` was written by [Luigi Acerbi](https://lacerbi.github.io/) using [Claude](https://www.anthropic.com/claude) and [Claude Code](https://claude.ai/code).
+You can follow me on [X](https://x.com/AcerbiLuigi), [LinkedIn](https://www.linkedin.com/in/luigi-acerbi-719b492/), and [Bluesky](https://bsky.app/profile/lacerbi.bsky.social).
 
 ## Image Descriptions and Vision Models
 
-After the OCR step, figures are converted to a Markdown text description using vision models such as Mistral AI's [Mistral Small](https://mistral.ai/news/mistral-small-3-1) or Google's [Gemini 2.5 Flash](https://deepmind.google/technologies/gemini/flash/). You can select the desired vision model via a dropdown menu, based on which API keys you entered.
+After the OCR step, figures are converted to a Markdown text description using vision models such as Mistral AI's [Mistral Small 3.1](https://mistral.ai/news/mistral-small-3-1) or Google's [Gemini 3 Flash](https://blog.google/products/gemini/gemini-3-flash/). You can select the desired vision model via a dropdown menu, based on which API keys you entered.
 
 <details>
 <summary>Notes on vision models choice.</summary>
-  
+
 - Both Mistral AI and Google Gemini offer a **free API tier**.
-- [**Gemini 2.5 Flash**](https://deepmind.google/technologies/gemini/flash/) is our currently recommended model for `paper2llm`. It is included in the [Gemini API free tier](https://ai.google.dev/gemini-api/docs/pricing) or otherwise very cheap, and shows very good performance.
-- If you prefer to stick to only using the Mistral AI API, the default free Mistral AI model, [Mistral Small](https://mistral.ai/news/mistral-small-3-1), is a top-performing model in its size category and works generally well.
-- [Pixtral Large](https://mistral.ai/en/news/pixtral-large) may work better for understanding complex diagrams and concepts, but it's a premier model; the API call is not rejected, but it might redirect to a free model if no API credits are available.
-- Other premium models such as OpenAI's GPT-4o, Anthropic's Claude Sonnet 4 or Google Gemini 2.5 Pro might work better for complex figures, but beware of API costs.
+- [**Gemini 3 Flash**](https://blog.google/products/gemini/gemini-3-flash/) is our currently recommended model for `paper2llm`. It is included in the [Gemini API free tier](https://ai.google.dev/gemini-api/docs/pricing) or otherwise very cheap, and shows very good performance.
+- If you prefer to stick to only using the Mistral AI API, the default free Mistral AI model, [Mistral Small 3.1](https://mistral.ai/news/mistral-small-3-1), is a top-performing model in its size category and works generally well.
+- [Mistral Large 3](https://mistral.ai/news/mistral-large-3) or [Pixtral Large](https://mistral.ai/news/pixtral-large) may work better for understanding complex diagrams and concepts, but they are premier models.
+- Other premium models such as OpenAI's GPT-5, Anthropic's Claude 4.5 Sonnet, or Google Gemini 3 Pro might work better for complex figures, but beware of API costs.
 </details>
 
 ## Disclaimers
@@ -40,6 +39,13 @@ After the OCR step, figures are converted to a Markdown text description using v
 - We have no affiliation or financial relationship with Mistral AI, besides sympathy for a European AI company and appreciation for their AI models, nor with any other LLM providers.
 - This is a _research preview_, as they say. Use at your own risk and with all the caveats of modern AI and LLM usage.
 - In particular, image descriptions might be off in clear or subtle ways and you should double-check and fix them as needed.
+
+### Privacy and Legal
+
+- **Data transmission:** When you use `paper2llm`, your PDF content is sent to third-party API providers (Mistral AI, OpenAI, Google, Anthropic) for processing. By using this tool, you agree to the terms of service and privacy policies of these providers.
+- **No server-side storage:** `paper2llm` runs entirely in your browser. We do not store, collect, or have access to your documents, API keys, or converted files.
+- **Your responsibility:** You are solely responsible for ensuring you have the right to process and convert any documents you upload. Do not upload confidential, proprietary, or sensitive documents unless you understand and accept the data handling practices of the API providers.
+- **API provider policies:** Please review the data usage policies of the respective providers, as some may use API inputs for model training unless you opt out. See [Mistral AI](https://mistral.ai/terms/), [OpenAI](https://openai.com/policies/), [Google](https://ai.google.dev/terms), and [Anthropic](https://www.anthropic.com/legal/privacy) for details.
 
 ## License
 
