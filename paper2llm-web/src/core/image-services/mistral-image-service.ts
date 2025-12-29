@@ -18,24 +18,23 @@ export class MistralImageService extends BaseImageService {
   // Available Mistral Vision models
   private readonly modelInfos: VisionModelInfo[] = [
     {
-      id: "pixtral-12b-2409",
-      name: "Pixtral",
-      description: "Standard vision model for simple use cases (free tier)",
+      id: "mistral-large-3-25-12",
+      name: "Mistral Large 3",
+      description: "State-of-the-art multimodal model for complex tasks",
+      provider: "mistral",
+      maxTokens: this.DEFAULT_PREMIUM_MODEL_TOKENS,
+    },
+    {
+      id: "mistral-small-3-1-25-03",
+      name: "Mistral Small 3.1",
+      description: "Fast, efficient model with image understanding",
       provider: "mistral",
       maxTokens: this.DEFAULT_FAST_MODEL_TOKENS,
     },
     {
-      id: "mistral-small-latest",
-      name: "Mistral Small",
-      description:
-        "A new leader among small models with image understanding (free tier)",
-      provider: "mistral",
-      maxTokens: this.DEFAULT_FAST_MODEL_TOKENS,
-    },
-    {
-      id: "pixtral-large-latest",
+      id: "pixtral-large-24-11",
       name: "Pixtral Large",
-      description: "Frontier-class multimodal model (premier tier)",
+      description: "Frontier-class model designed for image understanding",
       provider: "mistral",
       maxTokens: this.DEFAULT_PREMIUM_MODEL_TOKENS,
     },
@@ -63,7 +62,7 @@ export class MistralImageService extends BaseImageService {
     if (provider !== "mistral") {
       return "";
     }
-    return "mistral-small-latest";
+    return "mistral-small-3-1-25-03"; // Use Mistral Small 3.1 as default (balance of speed/quality)
   }
 
   /**

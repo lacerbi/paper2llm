@@ -3,10 +3,7 @@
 
 import { useState } from "react";
 import { MarkdownSections } from "../../../../core/utils/markdown-splitter";
-import {
-  PdfToMdResult,
-  BibTeXTitleValidation,
-} from "../../../../types/interfaces";
+import { PdfToMdResult } from "../../../../types/interfaces";
 import {
   generateBibTeXFromMarkdown,
   BibTeXGenerationResult,

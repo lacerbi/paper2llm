@@ -2,7 +2,7 @@
 // Provides authenticated encryption (AES-GCM), key derivation (PBKDF2), and secure
 // random number generation with appropriate encoding utilities and fallbacks.
 
-import { EncryptedKeyData, ValidationInfo, CRYPTO_ALGORITHMS, CRYPTO_DEFAULTS } from "./interfaces";
+import { EncryptedKeyData, CRYPTO_ALGORITHMS, CRYPTO_DEFAULTS } from "./interfaces";
 import { ApiKeyStorageError } from "../errors";
 import { ApiProvider } from "../api-key-storage";
 

@@ -7,7 +7,6 @@ import {
   ApiProvider,
   ApiKeyStorageType,
 } from "../api-key-storage";
-import { ApiKeyProvider } from "./interfaces";
 import { StorageOperations } from "./storage-operations";
 
 /**

@@ -2,24 +2,23 @@
 // Shows stages with icons, animated progress indicators, and detailed error handling with recovery options.
 
 import React, { useState, useEffect } from 'react';
-import { 
-  Box, 
-  Card, 
-  CardContent, 
-  Typography, 
-  LinearProgress, 
-  Button, 
-  Alert, 
-  AlertTitle, 
+import {
+  Box,
+  Card,
+  CardContent,
+  Typography,
+  LinearProgress,
+  Button,
+  Alert,
+  AlertTitle,
   Stack,
   Chip,
   Divider,
   Collapse,
   IconButton,
-  Paper,
-  TextField
+  Paper
 } from '@mui/material';
-import { 
+import {
   CloudUpload as UploadIcon,
   Settings as ProcessingIcon,
   CloudDownload as DownloadIcon,
@@ -31,7 +30,6 @@ import {
   Cancel as CancelIcon,
   Replay as RetryIcon,
   ExpandMore as ExpandMoreIcon,
-  Code as CodeIcon,
   ContentCopy as CopyIcon,
   VisibilityOff as VisibilityOffIcon,
   Visibility as VisibilityIcon

@@ -2,14 +2,7 @@
 // Displays masked or visible API key with appropriate input controls and provider documentation link.
 
 import React from "react";
-import {
-  TextField,
-  InputAdornment,
-  IconButton,
-  FormHelperText,
-  Tooltip,
-  useTheme,
-} from "@mui/material";
+import { TextField, InputAdornment, IconButton, Tooltip } from "@mui/material";
 import {
   Visibility as VisibilityIcon,
   VisibilityOff as VisibilityOffIcon,
@@ -45,8 +38,6 @@ const ApiKeyInput: React.FC<ApiKeyInputProps> = ({
   onChange,
   onToggleVisibility,
 }) => {
-  const theme = useTheme();
-
   return (
     <>
       <TextField

@@ -2,18 +2,17 @@
 // Handles both file uploads and URL inputs with validation, combining drag & drop and URL
 // input on the same row for a more compact interface.
 
-import React, { useState, useRef, useCallback, DragEvent, ChangeEvent } from 'react';
-import { 
-  Box, 
-  Paper, 
-  Typography, 
-  TextField, 
-  Button, 
-  Divider, 
-  Card, 
+import React, { useState, useRef, useCallback, useEffect, DragEvent, ChangeEvent } from 'react';
+import {
+  Box,
+  Paper,
+  Typography,
+  TextField,
+  Button,
+  Divider,
+  Card,
   CardContent,
   Alert,
-  IconButton, 
   useTheme,
   Grid,
   Container
@@ -22,11 +21,13 @@ import {
   CloudUpload as UploadIcon,
   InsertDriveFile as FileIcon
 } from '@mui/icons-material';
-import { FileUploaderState, PdfFile } from '../../types/interfaces';
+import { FileUploaderState, PdfFile, PdfFileWithPageInfo, PageRange } from '../../types/interfaces';
 import { webFileHandler } from '../../adapters/web/file-handler';
+import { getPdfPageCount } from '../../core/utils/pdf-page-utils';
+import PageRangeSelector from './PageRangeSelector';
 
 interface FileUploaderProps {
-  onFileSelected: (file: PdfFile) => void;
+  onFileSelected: (file: PdfFileWithPageInfo) => void;
 }
 
 const FileUploader: React.FC<FileUploaderProps> = ({ onFileSelected }) => {
@@ -37,9 +38,77 @@ const FileUploader: React.FC<FileUploaderProps> = ({ onFileSelected }) => {
     error: null,
     isDragging: false,
     url: '',
+    pageCount: null,
+    pageRange: [1, 1],
+    pageCountLoading: false,
+    pageCountError: null,
   });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Detect page count after file is loaded
+  const detectPageCount = useCallback(async (pdfFile: PdfFile) => {
+    // For direct URL processing (e.g., arXiv), we can't count pages locally
+    if (pdfFile.directProcessUrl) {
+      setState(prev => ({
+        ...prev,
+        pageCount: null,
+        pageRange: [1, 1],
+        pageCountLoading: false,
+        pageCountError: null
+      }));
+      return;
+    }
+
+    setState(prev => ({ ...prev, pageCountLoading: true, pageCountError: null }));
+
+    try {
+      const result = await getPdfPageCount(pdfFile.content);
+
+      if (result.error) {
+        setState(prev => ({
+          ...prev,
+          pageCount: null,
+          pageCountError: result.error ?? null,
+          pageCountLoading: false
+        }));
+      } else {
+        setState(prev => ({
+          ...prev,
+          pageCount: result.pageCount,
+          pageRange: [1, result.pageCount],
+          pageCountLoading: false
+        }));
+      }
+    } catch (error) {
+      setState(prev => ({
+        ...prev,
+        pageCount: null,
+        pageCountError: error instanceof Error ? error.message : 'Failed to count pages',
+        pageCountLoading: false
+      }));
+    }
+  }, []);
+
+  // Handle page range change from slider
+  const handlePageRangeChange = useCallback((range: [number, number]) => {
+    setState(prev => ({ ...prev, pageRange: range }));
+  }, []);
+
+  // Notify parent when page range changes
+  useEffect(() => {
+    if (state.file && state.pageCount && state.pageCount > 1) {
+      const pageRange: PageRange = {
+        startPage: state.pageRange[0],
+        endPage: state.pageRange[1]
+      };
+      onFileSelected({
+        ...state.file,
+        pageCount: state.pageCount,
+        selectedPageRange: pageRange
+      });
+    }
+  }, [state.pageRange, state.file, state.pageCount, onFileSelected]);
 
   // Handle drag events
   const handleDragEnter = useCallback((e: DragEvent<HTMLDivElement>) => {
@@ -66,44 +135,60 @@ const FileUploader: React.FC<FileUploaderProps> = ({ onFileSelected }) => {
   const handleDrop = useCallback(async (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
-    
+
     setState(prev => ({ ...prev, isDragging: false, loading: true, error: null }));
-    
+
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       const file = e.dataTransfer.files[0];
-      
+
       try {
         const pdfFile = await webFileHandler.readFile(file);
-        setState(prev => ({ ...prev, file: pdfFile, loading: false }));
-        onFileSelected(pdfFile);
+        setState(prev => ({
+          ...prev,
+          file: pdfFile,
+          loading: false,
+          pageCount: null,
+          pageRange: [1, 1],
+          pageCountError: null
+        }));
+        onFileSelected({ ...pdfFile, pageCount: undefined, selectedPageRange: undefined });
+        detectPageCount(pdfFile);
       } catch (error) {
-        setState(prev => ({ 
-          ...prev, 
-          loading: false, 
-          error: error instanceof Error ? error.message : 'Failed to process file' 
+        setState(prev => ({
+          ...prev,
+          loading: false,
+          error: error instanceof Error ? error.message : 'Failed to process file'
         }));
       }
     }
-  }, [onFileSelected]);
+  }, [onFileSelected, detectPageCount]);
 
   // Handle file input change
   const handleFileChange = useCallback(async (e: ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       setState(prev => ({ ...prev, loading: true, error: null }));
-      
+
       try {
         const pdfFile = await webFileHandler.readFile(e.target.files[0]);
-        setState(prev => ({ ...prev, file: pdfFile, loading: false }));
-        onFileSelected(pdfFile);
+        setState(prev => ({
+          ...prev,
+          file: pdfFile,
+          loading: false,
+          pageCount: null,
+          pageRange: [1, 1],
+          pageCountError: null
+        }));
+        onFileSelected({ ...pdfFile, pageCount: undefined, selectedPageRange: undefined });
+        detectPageCount(pdfFile);
       } catch (error) {
-        setState(prev => ({ 
-          ...prev, 
-          loading: false, 
-          error: error instanceof Error ? error.message : 'Failed to process file' 
+        setState(prev => ({
+          ...prev,
+          loading: false,
+          error: error instanceof Error ? error.message : 'Failed to process file'
         }));
       }
     }
-  }, [onFileSelected]);
+  }, [onFileSelected, detectPageCount]);
 
   // Handle URL input
   const handleUrlChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
@@ -113,26 +198,34 @@ const FileUploader: React.FC<FileUploaderProps> = ({ onFileSelected }) => {
   // Process URL submission
   const handleUrlSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!state.url.trim()) {
       setState(prev => ({ ...prev, error: 'Please enter a URL' }));
       return;
     }
 
     setState(prev => ({ ...prev, loading: true, error: null }));
-    
+
     try {
       const pdfFile = await webFileHandler.fetchFromUrl(state.url);
-      setState(prev => ({ ...prev, file: pdfFile, loading: false }));
-      onFileSelected(pdfFile);
+      setState(prev => ({
+        ...prev,
+        file: pdfFile,
+        loading: false,
+        pageCount: null,
+        pageRange: [1, 1],
+        pageCountError: null
+      }));
+      onFileSelected({ ...pdfFile, pageCount: undefined, selectedPageRange: undefined });
+      detectPageCount(pdfFile);
     } catch (error) {
-      setState(prev => ({ 
-        ...prev, 
-        loading: false, 
-        error: error instanceof Error ? error.message : 'Failed to fetch PDF from URL' 
+      setState(prev => ({
+        ...prev,
+        loading: false,
+        error: error instanceof Error ? error.message : 'Failed to fetch PDF from URL'
       }));
     }
-  }, [state.url, onFileSelected]);
+  }, [state.url, onFileSelected, detectPageCount]);
 
   // Trigger file selection dialog
   const handleSelectFile = () => {
@@ -334,14 +427,14 @@ const FileUploader: React.FC<FileUploaderProps> = ({ onFileSelected }) => {
               </Typography>
             </Box>
             <Typography variant="body2" sx={{ mb: 1 }}>
-              <strong>Size:</strong> {state.file.source === 'url' ? 'N/A' : `${(state.file.size / 1024 / 1024).toFixed(2)} MB`} | 
+              <strong>Size:</strong> {state.file.source === 'url' ? 'N/A' : `${(state.file.size / 1024 / 1024).toFixed(2)} MB`} |
               <strong> Source:</strong> {state.file.source === 'upload' ? 'Local Upload' : 'URL'}
               {state.file.originalUrl && (
-                <> | <a 
+                <> | <a
                   href={state.file.originalUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  style={{ 
+                  style={{
                     color: theme.palette.primary.main,
                     textDecoration: 'none',
                     wordBreak: 'break-all'
@@ -352,6 +445,15 @@ const FileUploader: React.FC<FileUploaderProps> = ({ onFileSelected }) => {
                 </>
               )}
             </Typography>
+
+            {/* Page Range Selector */}
+            <PageRangeSelector
+              pageCount={state.pageCount}
+              pageRange={state.pageRange}
+              onPageRangeChange={handlePageRangeChange}
+              isLoading={state.pageCountLoading}
+              error={state.pageCountError}
+            />
           </CardContent>
         </Card>
       )}

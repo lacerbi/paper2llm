@@ -1,26 +1,27 @@
 // AI Summary: Main orchestration pipeline for converting PDFs to Markdown.
 // Coordinates file handling, OCR processing, image description, and Markdown generation with progress tracking.
 
-import { 
-  PdfFile, 
-  OcrOptions, 
-  MarkdownOptions, 
+import {
+  PdfFile,
+  PdfFileWithPageInfo,
+  OcrOptions,
+  MarkdownOptions,
   PdfToMdResult,
   ProgressReporter,
-  ApiProvider,
-  BibTeXTitleValidation
+  ApiProvider
 } from '../types/interfaces';
 import { mistralOcrService } from './ocr-service';
 import { markdownProcessor } from './markdown-processor';
 import { multiProviderImageService } from './image-service';
-import { generateBibTeXFromMarkdown, BibTeXGenerationResult } from './utils/bibtex-generator';
+import { generateBibTeXFromMarkdown } from './utils/bibtex-generator';
+import { extractPdfPages, pageRangeToMistralPages } from './utils/pdf-page-utils';
 
 export class PdfToMdService {
   /**
    * Converts a PDF file to enhanced Markdown
    */
   public async convertPdfToMarkdown(
-    file: PdfFile,
+    file: PdfFileWithPageInfo | PdfFile,
     ocrApiKey: string,
     visionApiKey: string,
     ocrOptions: OcrOptions = {},
@@ -38,11 +39,62 @@ export class PdfToMdService {
           message: 'Starting PDF to Markdown conversion'
         });
       }
-      
+
+      // Handle page range selection with dual strategy
+      let processFile: PdfFile = file;
+      let processOcrOptions = { ...ocrOptions };
+      const fileWithPageInfo = file as PdfFileWithPageInfo;
+
+      if (fileWithPageInfo.selectedPageRange && fileWithPageInfo.pageCount && fileWithPageInfo.pageCount > 1) {
+        const { startPage, endPage } = fileWithPageInfo.selectedPageRange;
+        const isFullRange = startPage === 1 && endPage === fileWithPageInfo.pageCount;
+
+        if (!isFullRange) {
+          if (progressReporter) {
+            progressReporter.reportProgress({
+              stage: 'preparing',
+              progress: 2,
+              message: `Preparing pages ${startPage}-${endPage} of ${fileWithPageInfo.pageCount}`
+            });
+          }
+
+          if (file.directProcessUrl && file.originalUrl) {
+            // For URL-based PDFs: use Mistral's pages parameter
+            processOcrOptions.pages = pageRangeToMistralPages(startPage, endPage);
+          } else if (file.source === 'upload') {
+            // For local uploads: extract pages into new PDF (privacy-preserving)
+            const extractedBlob = await extractPdfPages(
+              file.content,
+              startPage,
+              endPage
+            );
+
+            processFile = {
+              ...file,
+              content: extractedBlob,
+              size: extractedBlob.size
+            };
+          } else if (file.source === 'url' && !file.directProcessUrl) {
+            // For fetched URLs (we have the blob): extract pages
+            const extractedBlob = await extractPdfPages(
+              file.content,
+              startPage,
+              endPage
+            );
+
+            processFile = {
+              ...file,
+              content: extractedBlob,
+              size: extractedBlob.size
+            };
+          }
+        }
+      }
+
       const ocrResult = await mistralOcrService.processPdf(
-        file,
+        processFile,
         ocrApiKey,
-        ocrOptions,
+        processOcrOptions,
         progressReporter
       );
       

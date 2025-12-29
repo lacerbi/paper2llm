@@ -19,6 +19,14 @@ export type {
 };
 
 /**
+ * Page range selection for PDF processing (1-indexed for UI display)
+ */
+export interface PageRange {
+  startPage: number;
+  endPage: number;
+}
+
+/**
  * Represents a PDF file that can be processed by the application.
  */
 export interface PdfFile {
@@ -29,6 +37,14 @@ export interface PdfFile {
   source: 'upload' | 'url';
   originalUrl?: string;
   directProcessUrl?: boolean; // indicates if URL can be processed directly by Mistral OCR
+}
+
+/**
+ * Extended PDF file information including page count and selected range
+ */
+export interface PdfFileWithPageInfo extends PdfFile {
+  pageCount?: number;
+  selectedPageRange?: PageRange;
 }
 
 /**
@@ -70,6 +86,10 @@ export interface FileUploaderState {
   error: string | null;
   isDragging: boolean;
   url: string;
+  pageCount: number | null;
+  pageRange: [number, number];
+  pageCountLoading: boolean;
+  pageCountError: string | null;
 }
 
 
@@ -95,6 +115,7 @@ export interface ApiKeyManagerState {
 export interface OcrOptions {
   model?: string;
   includeImageBase64?: boolean;
+  pages?: number[]; // 0-indexed page numbers to process (for Mistral API)
 }
 
 /**

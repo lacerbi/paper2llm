@@ -4,7 +4,6 @@
 
 import { ApiKeyStorageType, ApiProvider } from "../api-key-storage";
 import { StorageKeyPatterns } from "./interfaces";
-import { ApiKeyProvider } from "./interfaces";
 
 /**
  * Interface for storage operations service

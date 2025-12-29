@@ -13,7 +13,6 @@ import {
   Error as ErrorIcon
 } from '@mui/icons-material';
 import { ApiProvider } from '../../../types/interfaces';
-import { ApiKeyExpiration } from '../../../types/interfaces';
 
 interface ErrorMessageProps {
   error: string | null;

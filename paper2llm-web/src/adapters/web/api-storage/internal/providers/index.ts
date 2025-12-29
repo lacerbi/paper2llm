@@ -19,7 +19,6 @@ import { MistralProvider } from './mistral-provider';
 import { OpenAIProvider } from './openai-provider';
 import { GeminiProvider } from './gemini-provider';
 import { AnthropicProvider } from './anthropic-provider';
-import { BaseProvider } from './base-provider';
 
 // Export base provider class and implementations
 export { BaseProvider } from './base-provider';

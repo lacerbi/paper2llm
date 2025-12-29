@@ -17,7 +17,6 @@ import {
   Grid,
 } from "@mui/material";
 import { DescriptionOutlined as MarkdownIcon } from "@mui/icons-material";
-import { PdfToMdResult } from "../../../types/interfaces";
 import { MarkdownPreviewProps } from "./types";
 import { calculateImageMetrics } from "./utils/content-utils";
 import { useMarkdownSections } from "./hooks/useMarkdownSections";

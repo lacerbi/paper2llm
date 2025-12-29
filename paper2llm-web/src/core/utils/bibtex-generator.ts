@@ -100,25 +100,6 @@ const DEFAULT_OPTIONS: BibTeXGenerationOptions = {
 };
 
 /**
- * Safely extracts a year from a date string or returns the current year
- *
- * @param dateStr The date string to extract year from
- * @returns The extracted year or current year as fallback
- */
-function extractYearFromDate(dateStr?: string): string {
-  if (!dateStr) {
-    return new Date().getFullYear().toString();
-  }
-
-  try {
-    const date = new Date(dateStr);
-    return date.getFullYear().toString();
-  } catch (e) {
-    return new Date().getFullYear().toString();
-  }
-}
-
-/**
  * Sanitizes text for use in BibTeX entries by escaping special characters
  *
  * @param text The text to sanitize

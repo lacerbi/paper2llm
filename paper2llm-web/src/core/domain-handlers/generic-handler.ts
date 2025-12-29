@@ -269,7 +269,7 @@ export function createAclConfig(): RepositoryConfig {
     pdfTransformRules: [
       {
         // Ensure URL ends with .pdf
-        pattern: /\/([^\/]+)$/,
+        pattern: /\/([^/]+)$/,
         replacement: (match, urlObj) => {
           return `/${match[1]}.pdf`;
         }
@@ -278,7 +278,7 @@ export function createAclConfig(): RepositoryConfig {
     filenameRules: [
       {
         // Extract paper ID from pathname
-        pattern: /\/([^\/]+?)(?:\.pdf)?$/,
+        pattern: /\/([^/]+?)(?:\.pdf)?$/,
         template: 'acl-$1.pdf'
       }
     ]
@@ -356,19 +356,19 @@ export function createNipsConfig(): RepositoryConfig {
     pdfTransformRules: [
       {
         // Convert hash URLs to file URLs
-        pattern: /(\/paper(?:_files\/paper)?\/\d{4})\/hash\/([^\/]+)-Abstract\.html/,
+        pattern: /(\/paper(?:_files\/paper)?\/\d{4})\/hash\/([^/]+)-Abstract\.html/,
         replacement: '$1/file/$2-Paper.pdf'
       }
     ],
     filenameRules: [
       {
         // Extract year and hash for filename
-        pattern: /\/paper(?:_files\/paper)?\/(\d{4})\/(?:hash|file)\/([^\/\-]+)/,
+        pattern: /\/paper(?:_files\/paper)?\/(\d{4})\/(?:hash|file)\/([^/-]+)/,
         template: 'neurips-$1-$2.pdf'
       },
       {
         // Fallback pattern just for hash
-        pattern: /\/(?:hash|file)\/([^\/\-]+)/,
+        pattern: /\/(?:hash|file)\/([^/-]+)/,
         template: 'neurips-$1.pdf'
       }
     ]

@@ -15,10 +15,7 @@ import { ApiKeyStorageError } from "../errors";
 import {
   ProviderRegistry,
   StorageKeyPatterns,
-  ApiKeyProvider,
   createDefaultStorageKeyPatterns,
-  CRYPTO_ALGORITHMS,
-  CRYPTO_DEFAULTS,
 } from "./interfaces";
 import { passwordValidation } from "./password-utils";
 import { cryptoUtils } from "./crypto-utils";
