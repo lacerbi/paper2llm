@@ -77,9 +77,22 @@ llama.cpp exposes multimodal (vision) inference two ways, both relevant here:
   `/v1/chat/completions` endpoint and a `/health` endpoint. Images are passed as
   base64 data URLs in the chat message content (the standard OpenAI
   `image_url` content-part shape). **This is what `inscriber` uses.**
-- **`llama-mtmd-cli`** — a one-shot CLI for a single image+prompt. Not used by
-  `inscriber` (it reloads the model on every call). Mentioned only so a future
-  dev understands why we don't use it.
+- **`llama-mtmd-cli`** — a one-shot CLI for a single image+prompt. Reloads the
+  model on every call (slow), so it is **not the primary path** — but it is kept
+  as a **documented fallback** behind the same backend abstraction (see the
+  ⚠️ note below and §8.2), because the server image path has had model-specific
+  bugs.
+
+> ⚠️ **Verify the server image path for DeepSeek-OCR before committing to it.**
+> There is an open llama.cpp issue (#21022) where submitting an image to
+> DeepSeek-OCR through `llama-server` fails in tokenization
+> ("number of bitmaps (1) does not match number of markers (0)"), while
+> `llama-mtmd-cli` processes the *same* model correctly. **M1a (§21) must gate on
+> proving a base64 image round-trips through `/v1/chat/completions` on the pinned
+> llama.cpp build.** If it is still broken on the target build, the
+> `DeepSeekOcrBackend` falls back to driving `llama-mtmd-cli` (one-shot,
+> accept the reload cost) — which is why the backend, not the orchestrator, owns
+> the inference call (§8.2).
 
 A multimodal model in llama.cpp is **two files**:
 
@@ -99,21 +112,34 @@ So **every** model `inscriber` uses (OCR and VLM) is configured as a
   Reference GGUFs live in the `ggml-org/DeepSeek-OCR-GGUF` Hugging Face
   collection.
 - **Quirks (must be respected):**
-  - Use **f16** weights for the projector/model where recommended. **Q4_K_M
-    quantization has been observed to cause an infinite generation loop on some
-    prompts.** Default to f16; allow the user to override.
-  - **Do NOT pass `--chat-template deepseek-ocr`** to the server — it breaks
-    output. Let the model's built-in template apply.
-  - The model is **prompt-driven**. Known working prompts:
-    - `OCR` — plain OCR.
-    - `OCR markdown` — OCR formatted as Markdown.
-    - `<|grounding|>OCR` — OCR **with layout grounding** (bounding boxes for
-      detected regions). **This is the mode `inscriber` uses** (see §8).
-  - **Resolution modes** (dynamic): roughly `base`/`standard` (~1024px),
-    `large` (~1280px), and a dynamic tiling mode informally called **"Gundam"**
-    that tiles the page and adds a global view — highest quality, slowest, best
-    for dense/multi-column pages. `inscriber` **defaults to `large`** and
-    exposes `gundam` as an opt-in (§7, §13).
+  - Use **f16** weights for the model/projector. **Q4_K_M quantization causes
+    runaway repetition loops on some prompts** — the upstream model relies on an
+    n-gram repetition penalty that llama.cpp does not implement, so quantized
+    weights loop. Default to f16; allow override. **Even at f16**, guard every
+    OCR request with a hard `max_tokens` cap, a per-request wall-clock timeout,
+    and llama.cpp repetition-penalty flags (§5.3, §8); treat a truncated/looping
+    page as a soft failure (§16), or a single bad page hangs the whole pass.
+  - Drive OCR **deterministically**: send `temperature: 0` (and a fixed seed) on
+    OCR requests. Sampling params are part of the cache key (§8.5).
+  - **Do NOT pass `--chat-template deepseek-ocr`** to the **server**. Reason:
+    that flag is an `llama-mtmd-cli`-side concern; `llama-server` applies the
+    model's built-in template, and forcing the flag corrupts output. (Don't
+    "fix" this later by adding it.)
+  - The model is **prompt-driven**. Known working prompts: `OCR`,
+    `OCR markdown`, and `<|grounding|>OCR` — OCR **with layout grounding**
+    (bounding boxes for detected regions). **`inscriber` uses
+    `<|grounding|>OCR`** (see §8).
+  - **Resolution modes.** DeepSeek-OCR's documented native modes are
+    **Tiny (512px)**, **Small (640px)**, **Base (1024px)**, **Large (1280px)**,
+    plus a dynamic tiling mode informally called **"Gundam"** (multiple ~640px
+    tiles **plus** a 1024px global view) — highest quality, slowest, best for
+    dense/multi-column pages. There is **no "standard" mode** (an earlier draft
+    invented one). `inscriber` **defaults to `large`**, exposes the full ladder,
+    and `gundam` as the dense-page opt-in (§7, §13). See §7 for the mode→render
+    mapping, and note that **Gundam tiling is model-side behavior**: the
+    rasterizer renders a single high-res page image and the model tiles it — the
+    grounding-coordinate frame for Gundam must be confirmed during M1
+    (coords may be relative to the 1024 global view, not the tiles).
 
 > ⚠️ **Implementation note on the grounding format.** DeepSeek-OCR's grounding
 > output is expected to follow the DeepSeek-VL grounding convention:
@@ -127,10 +153,13 @@ So **every** model `inscriber` uses (OCR and VLM) is configured as a
 ### 2.3 Gemma 4 (first VLM backend)
 
 - Released April 2026, **Apache-2.0** licensed. Variants: `E2B`, `E4B`
-  (multimodal, efficient), plus larger `26B` MoE and `31B` dense.
+  (multimodal, efficient), plus a larger `26B-A4B` MoE and `31B` dense.
 - The `E2B`/`E4B` variants are supported as multimodal models in llama.cpp and
   are the recommended figure-description models for `inscriber` (small, fast,
   permissively licensed). Larger variants work if the user has the hardware.
+- **GGUF filenames in this doc (e.g. `gemma-4-e4b-f16.gguf`) are placeholders** —
+  the user supplies the actual paths; real distributions use their own casing and
+  quant suffixes (e.g. unsloth `gemma-4-E4B-it-GGUF`).
 - Used purely as a **vision→text** describer (image in, prose out). It does not
   need grounding or special prompts beyond the description prompt (§9.3).
 
@@ -270,12 +299,19 @@ Resolve with `pathlib`; never rely on `PATH` unless `llama_cpp_bin_dir` is unset
   "127.0.0.1", "--port", port, "-c", ctx, "-ngl", n_gpu_layers, ...])`.
   - Always use a **list of args** (never `shell=True`).
   - Bind to `127.0.0.1` on an **ephemeral free port** chosen by `inscriber`
-    (probe with a socket bind) so concurrent runs don't collide.
+    (probe with a socket bind, then pass it to `--port`). Note this is a small
+    TOCTOU race — another process could grab the port between probe and the
+    server's bind; on a `/health` timeout, retry with a fresh port.
   - **Do NOT add `--chat-template`** for DeepSeek-OCR (§2.2).
-  - Capture stdout/stderr to a log file under the cache/run dir for debugging.
-- **Health:** poll `GET /health` until it returns ready or a timeout
-  (`server_start_timeout`, default 120s). Surface a clear error including the
-  last lines of the server log on timeout.
+  - **Generation-safety flags** (per §2.2): pass repetition-penalty flags via
+    `backend.server_flags()`; per-request, send `max_tokens` and `temperature: 0`
+    from the client (§8.2). Capture stdout/stderr to a log file under the run dir.
+- **Health:** poll `GET /health` until ready or timeout (`server_start_timeout`,
+  default 120s). Contract: llama-server returns **503 while the model loads** and
+  **200 when ready** — treat 503 as "keep waiting," not fatal. (Under load it can
+  also return 200 with `"no slot available"`; for this single-client tool that
+  won't occur, but don't assume every 200 means idle.) On timeout, surface a
+  clear error including the last lines of the server log.
 - **Teardown:** `proc.terminate()`, wait briefly, `proc.kill()` if needed.
   - Register an `atexit`/`finally` + signal handler so a Ctrl-C or crash never
     leaves an orphaned server. Use a `contextmanager`:
@@ -292,10 +328,15 @@ Resolve with `pathlib`; never rely on `PATH` unless `llama_cpp_bin_dir` is unset
 ### 5.4 Concurrency mode
 
 Config `inference.mode`:
-- `sequential` (default) — one server at a time; OCR pass fully completes and
-  server is town down before VLM server starts.
-- `concurrent` — both servers up simultaneously (faster wall-clock, needs RAM
-  for both). Only honored when both models fit; document the RAM caveat.
+- `sequential` (default) — one server at a time; the OCR pass fully completes and
+  the server is torn down before the VLM server starts.
+- `concurrent` — both servers up simultaneously (faster wall-clock). The real
+  constraint is **VRAM**, not just RAM: each server gets its own `-ngl`, so allow
+  an independent GPU-layer setting per server rather than a single global value.
+  Even in `concurrent` mode, **consult the OCR cache before launching the OCR
+  server** (§8.5) — a fully-cached document needs no OCR server at all. There is
+  no automatic "do both models fit?" detection in v1; it is the user's
+  responsibility, documented as a VRAM caveat.
 
 ---
 
@@ -305,17 +346,29 @@ Input is one positional argument: a **local PDF path** or an **http(s) URL**.
 
 - **Path:** validate it exists, is readable, and has a `%PDF` magic header.
 - **URL (requires network):**
-  - Run it through **domain handlers** (ported from `paper2llm`) that normalize
-    known academic hosts to a direct PDF URL and derive a sensible filename:
-    - **arXiv**: `arxiv.org/abs/1234.5678` → `arxiv.org/pdf/1234.5678`.
-    - **OpenReview**, **bioRxiv/medRxiv**, and a **generic** fallback handler.
-    - The handler interface (mirrors paper2llm's `DomainHandler`):
-      ```python
-      class DomainHandler(Protocol):
-          def can_handle(self, url: str) -> bool: ...
-          def normalize_pdf_url(self, url: str) -> str: ...
-          def file_name(self, url: str) -> str: ...
-      ```
+  - Run it through **domain handlers** (ported from `paper2llm`). ⚠️ Reality
+    check on the source: paper2llm has **no per-site handler classes and no
+    generic fallback handler**. The directory `core/domain-handlers/` contains
+    only `base-handler.ts`, `generic-handler.ts`, `index.ts` — a single
+    **config-driven `GenericDomainHandler`** instantiated once per repository from
+    a regex-based config (URL-match + PDF-URL transform + filename rule), wired up
+    by `createAllRepositoryHandlers()` in `index.ts`. There is **no**
+    `domain-handler-registry.ts`. URLs not matching any config are simply **not
+    handled** (no catch-all).
+  - It ships **seven** repository configs — port all of them:
+    **arXiv, OpenReview, ACL Anthology, bioRxiv, medRxiv, NeurIPS/NIPS, MLR Press
+    (PMLR)** (`generic-handler.ts`). Example: arXiv `…/abs/1234.5678` →
+    `…/pdf/1234.5678`. **Special case: OpenReview** must preserve the `?id=…`
+    query param when transforming to the PDF URL — a plain path rewrite breaks it.
+  - The Python shape can stay a small interface (method names are a free
+    re-spelling of paper2llm's `canHandle` / `normalizePdfUrl` / `getFileName`):
+    ```python
+    class DomainHandler(Protocol):
+        def can_handle(self, url: str) -> bool: ...
+        def normalize_pdf_url(self, url: str) -> str: ...
+        def file_name(self, url: str) -> str: ...
+    ```
+    …but the **reusable asset is the 7 regex configs**, not hand-written classes.
   - Download with `httpx`, following redirects, with a timeout and a
     descriptive User-Agent. Validate the downloaded bytes are a PDF.
 - Output of this stage: a `ResolvedInput(pdf_bytes, source, original_url,
@@ -337,17 +390,30 @@ Windows).
 
 Responsibilities:
 - **Page count** — needed to validate/clamp the page range.
-- **Page range** — config/CLI `pages` as a **1-indexed inclusive** range
-  (`"1-10"`, `"3"`, `"5-"`, `"-12"`, or `all`). Convert to a concrete list of
-  page indices, clamped to `[1, page_count]`.
-- **Render** each selected page to a PNG at a resolution driven by the OCR
-  resolution mode (§13). Implementation detail: render at a DPI that yields a
-  long-edge pixel size matching the target (e.g. `large` ≈ 1280px long edge).
-  Compute the zoom matrix: `zoom = target_px / max(page_pt_w, page_pt_h) * 72`.
-- Return `[PageImage(page_number, png_bytes, width_px, height_px)]`.
+- **Page range** — config/CLI `pages` as a **1-indexed inclusive** range,
+  clamped to `[1, page_count]`. paper2llm only supports `{startPage, endPage}`;
+  the open-ended/shorthand forms (`"1-10"`, `"3"`, `"5-"`, `"-12"`, `all`) are an
+  **inscriber convenience, not ported behavior**.
+- **Render** each selected page to a PNG at the long-edge pixel target for the
+  OCR resolution mode. The zoom matrix is `fitz.Matrix(zoom, zoom)` with
+  **`zoom = target_px / max(page_pt_w, page_pt_h)`** — PyMuPDF points are already
+  1/72 inch and the matrix is a unit scale, so there is **no `* 72`** (an earlier
+  draft had a `*72` that would render ~72× too large).
+
+  | mode | long-edge target | notes |
+  |---|---|---|
+  | `tiny` | 512px | fastest, lowest quality |
+  | `small` | 640px | |
+  | `base` | 1024px | |
+  | `large` | **1280px (default)** | balanced; good for most papers |
+  | `gundam` | render high-res (≥1280px); **model tiles it** | densest pages; the rasterizer does *not* tile — it renders one large page and DeepSeek-OCR tiles internally (§2.2) |
+- Return `[PageImage(page_number, png_bytes, width_px, height_px)]`. The
+  `(width_px, height_px)` are the **original rendered page** dimensions and are
+  the reference frame for `bbox_norm` (§8.2) and cropping (§8.4).
 
 Page images and crops are kept in a per-run **work directory** (under the OS temp
-dir or `--workdir`), cleaned up on success unless `--keep-intermediates`.
+dir or `--workdir`); deleted on **success** unless `--keep-intermediates`, and
+**kept on failure/Ctrl-C** for debugging (§15).
 
 ---
 
@@ -355,11 +421,14 @@ dir or `--workdir`), cleaned up on success unless `--keep-intermediates`.
 
 ### 8.1 Why an abstraction
 
-Different OCR models emit different grounding/layout formats and need different
-prompts. The pipeline must not know these details. So OCR is hidden behind an
-interface; v1 ships **one** implementation (DeepSeek-OCR) but adding Dots.OCR /
-PaddleOCR-VL / GLM-OCR / HunyuanOCR later is "write a new adapter + register
-it", with **zero pipeline changes**.
+Different OCR models emit different grounding/layout formats, need different
+prompts, and may even need a different *number of calls*. The pipeline must not
+know these details. So OCR is hidden behind an interface; v1 ships **one**
+implementation (DeepSeek-OCR) but adding Dots.OCR / PaddleOCR-VL / GLM-OCR /
+HunyuanOCR later is "write a new adapter + register it", with **zero pipeline
+changes**. For that promise to actually hold, two things below are non-obvious
+and deliberate: (a) the **backend owns the inference call**, not just the
+prompt/parse, and (b) `bbox_norm` is defined against a **fixed, explicit frame**.
 
 ### 8.2 The interface (`ocr/base.py`)
 
@@ -367,88 +436,135 @@ it", with **zero pipeline changes**.
 @dataclass
 class Region:
     label: str                 # e.g. "figure", "table", "text", "title"
-    bbox_norm: tuple[float, float, float, float]  # x1,y1,x2,y2 in [0,1]
-    text: str | None = None    # text content if the region carries any
+    # x1,y1,x2,y2 in [0,1], RELATIVE TO THE ORIGINAL RENDERED PAGE IMAGE
+    # (the PageImage width_px/height_px from §7) — NOT the model's padded/tiled
+    # frame. The backend is responsible for converting into this frame.
+    bbox_norm: tuple[float, float, float, float]
+    text: str | None = None    # caption/inline text for this region, if any
 
 @dataclass
 class OcrPageResult:
     page_number: int           # 1-indexed
-    markdown: str              # clean markdown for the page (coords stripped)
+    markdown: str              # clean markdown; figure regions are represented
+                               # by ⟦INSCRIBER_FIG:{id}⟧ placeholders (§8.3)
     regions: list[Region]      # all detected regions (figures, tables, etc.)
 
 class OcrBackend(ABC):
     name: str                  # registry key, e.g. "deepseek-ocr"
 
     @abstractmethod
-    def prompt(self, mode: ResolutionMode) -> str: ...
-    """The exact user prompt to send for this model (e.g. '<|grounding|>OCR')."""
+    def ocr_page(self, client: ChatClient, image: PageImage,
+                 mode: ResolutionMode) -> OcrPageResult: ...
+    """Own the WHOLE inference for one page: build prompt(s), call the model
+       (possibly more than once, or expecting JSON layout), and return clean
+       markdown + regions in the original-page frame. Single-call grounding
+       backends (DeepSeek) and multi-call / JSON-layout backends (Dots.OCR,
+       PaddleOCR-VL) both fit because the backend, not the orchestrator, drives
+       the calls."""
 
-    @abstractmethod
-    def parse(self, raw_output: str, image_size_px: tuple[int,int]) -> OcrPageResult: ...
-    """Turn the model's raw text into clean markdown + normalized regions.
-       Must strip any coordinate/grounding markup out of `markdown`."""
-
-    # server requirements the backend imposes (e.g. no chat template)
-    def server_flags(self) -> list[str]: return []
-    def forbid_chat_template(self) -> bool: return False
+    # server requirements the backend imposes
+    def server_flags(self) -> list[str]: return []      # e.g. repetition penalty
+    def forbid_chat_template(self) -> bool: return False # DeepSeek-OCR → True
+    def sampling(self) -> dict: return {"temperature": 0}  # OCR determinism
 ```
 
-The orchestrator, for each page: render → `client.describe(image, backend.prompt(mode))`
-→ `backend.parse(raw, size)` → `OcrPageResult`. Bounding boxes are normalized to
-`[0,1]` floats by the backend so cropping (§8.4) is model-agnostic.
+The orchestrator, per page, simply calls `backend.ocr_page(client, image, mode)`
+and gets an `OcrPageResult` whose bboxes are already in the original-page `[0,1]`
+frame — so cropping (§8.4) is genuinely model-agnostic and the padding/tiling
+correction (§8.3) lives **inside** each backend where it belongs.
+
+> Why not the old `prompt()` + orchestrator-owned `client.describe()` + `parse()`
+> split? Because it bakes in "exactly one text-returning call per page," which
+> JSON-layout and two-call OCR models violate, and it would force per-model
+> coordinate-frame logic into the shared crop step. Letting the backend own the
+> call is what makes "second backend, zero pipeline changes" true rather than
+> aspirational.
 
 ### 8.3 `DeepSeekOcrBackend` (`ocr/deepseek.py`)
 
-- `name = "deepseek-ocr"`.
-- `prompt(mode)` returns `"<|grounding|>OCR"` (grounding always on; we want the
-  figure boxes). A non-grounding fallback (`"OCR markdown"`) is available for a
-  config option that disables figure extraction entirely.
-- `forbid_chat_template() = True` (§2.2).
-- **`parse(raw, size)`** — the core parser. Expected input contains interleaved
-  grounding markup (see §2.2 note). Algorithm:
-  1. Find all grounding spans via regex, expected:
+- `name = "deepseek-ocr"`; `forbid_chat_template() = True`; `sampling()` sets
+  `temperature: 0` and a `max_tokens` cap (§2.2).
+- Prompt: `"<|grounding|>OCR"` (grounding always on; we want the figure boxes). A
+  non-grounding prompt (`"OCR markdown"`) is used when figure extraction is
+  disabled (`figure.enabled = false`, §13).
+- **`ocr_page` algorithm** (single grounding call → clean text **and** boxes;
+  this is the "exact parsing, single pass" decision):
+  1. Call the model once with the grounding prompt.
+  2. Find all grounding spans via regex, **expected**:
      `<\|ref\|>(?P<label>.*?)<\|/ref\|><\|det\|>\[\[(?P<coords>[\d,\s]+)\]\]<\|/det\|>`
-  2. For each, parse the 4 ints, divide by **999.0** → normalized bbox; build a
-     `Region(label, bbox_norm, text=nearby_text)`.
-  3. **Strip** all grounding markup tokens from the text to produce clean
-     `markdown` (this is the "exact parsing → single pass" decision: one
-     grounding call yields both clean text and boxes; no second OCR call).
-  4. Classify figure-like regions (`label` ∈ {figure, image, picture, chart,
-     diagram, plot}) for the crop step; keep all regions for context.
+     (coords on a **0–999** grid — see the M1 caveat below).
+  3. **Convert coordinates into the original-page `[0,1]` frame, undoing the
+     model's aspect-ratio padding.** This is mandatory and easy to get wrong:
+     for Base/Large modes DeepSeek-OCR **pads the page to a square** (e.g. 1024²)
+     before inference, so the 0–999 grid is relative to the *padded square*, not
+     the page. A naive `coord/999 * page_dimension` mis-places every box on any
+     non-square page (i.e. all A4/Letter). Correct mapping:
+     - let the page have long edge `L_px` and short edge `S_px` (from §7);
+     - the model squared it to `L_px × L_px` with the short axis padded by
+       `pad = (L_px − S_px) / 2` (symmetric);
+     - `px = coord/999 * L_px`; subtract `pad` on the **short axis**; then divide
+       by `S_px` (short axis) / `L_px` (long axis) to get `[0,1]` of the page.
+     For **Gundam**, confirm in M1 whether coords are relative to the 1024 global
+     view or to tiles, and convert accordingly. **Encapsulate all of this in the
+     backend** so `bbox_norm` is always original-page-relative (§8.2).
+  4. **Build clean markdown by *replacing* each grounding span, not blindly
+     deleting it.** ⚠️ Critical: for **figure-class** regions (`label` ∈
+     {figure, image, picture, chart, diagram, plot}), replace the span **in
+     place** with a `⟦INSCRIBER_FIG:{id}⟧` placeholder token (`id = fig_p{page}_{i}`)
+     so the description can be injected at the figure's real position later
+     (§10.2). For non-figure regions (text/title/table), strip the markup but
+     keep the text. **Do not** strip everything — that destroys the only anchor
+     and there is no inline `![]()` to fall back on (unlike paper2llm; see §10.2,
+     B-note). Set `Region.text` to the span's caption/inline text (used for the
+     `{caption_or_label}` in `describe-and-keep`, §10.2).
 - **Robustness:** if grounding markup is malformed/absent, fall back to treating
   the whole output as plain markdown with `regions = []` (no figures described,
   pipeline still succeeds). Log a warning.
 
-> **M1 task:** capture real DeepSeek-OCR output on 2–3 representative pages,
-> commit them as golden fixtures in `tests/fixtures/`, and pin
-> `test_deepseek_parser.py` to them. Adjust the regex/labels to the *actual*
-> tokens. Do not ship the parser on assumptions.
+> **M1 task (highest risk in the whole design):** capture real DeepSeek-OCR
+> output on 2–3 representative pages, commit them as golden fixtures, pin
+> `test_deepseek_parser.py` to them, and **derive/verify the padding math in
+> step 3 against the model's reference behavior** (the upstream `run_dpsk_ocr.py`
+> draws boxes on the *padded/processed* image). Treat the token strings and the
+> 0–999 grid as expected-but-unverified until this is done.
 
 ### 8.4 Figure cropping (`pdf/crop.py`)
 
-For each figure `Region` on a page: convert `bbox_norm` → pixel box against that
-page's rendered image (`x1*W, y1*H, x2*W, y2*H`), add a small padding margin
-(config `figure.crop_padding`, default a few %), clamp to image bounds, and crop
-with Pillow. Save as `figures/fig_p{page}_{i}.png`. Attach the crop path to the
-figure's record. Skip degenerate boxes (near-zero area).
+By the time cropping runs, every figure `Region.bbox_norm` is already in the
+**original-page `[0,1]` frame** (the backend did the padding/tiling correction,
+§8.3). So cropping is trivial and model-agnostic:
 
-Each figure also gets a stable **placeholder token** inserted into the page
-markdown at the figure's position (e.g. `⟦INSCRIBER_FIG:fig_p3_1⟧`) so the VLM
-description can be injected back in the exact spot (§10.2).
+- pixel box = `(x1*W, y1*H, x2*W, y2*H)` against the page's rendered image
+  (`W,H` = the `PageImage` dims from §7);
+- add a margin of `figure.crop_padding` (fraction of page dims, default 0.02);
+- clamp to image bounds; skip degenerate (near-zero-area) boxes;
+- crop with Pillow, save `figures/fig_p{page}_{i}.png`, attach the path to the
+  figure record (keyed by the same `{id}` used in the placeholder, §8.3).
 
 ### 8.5 OCR cache (`cache.py`)
 
 Per-page OCR is the expensive step; cache it.
 
 - **Key:** hash of `(pdf_content_hash, page_number, ocr_backend_name,
-  ocr_model_identity, resolution_mode, prompt)`. `ocr_model_identity` = model
-  file path + size + mtime (cheap proxy for "same weights").
-- **Value:** serialized `OcrPageResult` (JSON; bboxes + markdown) **plus** the
-  raw model output (for debugging).
+  model_identity, mmproj_identity, resolution_mode, render_long_edge_px, prompt,
+  sampling_params)`. Each item matters:
+  - `mmproj_identity` — the projector changes outputs too; hashing only the text
+    model (an earlier draft's mistake) misses mmproj swaps.
+  - `render_long_edge_px` — a different rendered resolution = a different input
+    image even at the same mode name.
+  - `sampling_params` — temperature/seed/`max_tokens` (§2.2/§8.2).
+  - `*_identity` = file path + size + **content hash** (the hash itself cached by
+    path+size+mtime so it's computed once). Keying on bare `mtime` is fragile:
+    a re-download/copy that preserves content but changes mtime busts the cache
+    spuriously, and `touch` without change wouldn't. Hash the content.
+- **Value:** serialized `OcrPageResult` (JSON; bboxes + markdown, placeholders
+  included) **plus** the raw model output (for debugging).
 - **Location:** `platformdirs.user_cache_dir("inscriber")/ocr/`.
 - On a re-run that changes only VLM settings, the entire OCR pass is served from
-  cache → the OCR server is never even launched. `--no-cache` / `--refresh`
-  bypass it.
+  cache → the OCR server is never even launched.
+- **`--refresh`** ignores existing entries, recomputes, and **overwrites** them.
+  **`--no-cache`** neither reads nor writes the cache (pure passthrough). These
+  are distinct (§13).
 
 ---
 
@@ -561,18 +677,32 @@ This image appears on page {N}. The surrounding page content follows.
 {page_text, truncated to ~2000 chars}
 ```
 
-This whole-page text becomes the `{context}` injected in §9.3. A narrower
-window (config `figure.context_chars`) around the figure placeholder is an
-**optional refinement**, but the default must match paper2llm's whole-page
-behavior so output quality is comparable. The figure's **caption** (a nearby
-`Figure N` / `Fig.` line, often already captured as the region text in §8.3) is
-naturally included since it lives in the page text.
+This whole-page text becomes the `{context}` injected in §9.3.
+**`figure.context_chars` is the truncation cap on the whole-page text, default
+`2000`** (paper2llm truncates at `substring(0, 1997) + "..."` only when the page
+exceeds 2000 chars) — it is **not** a "window around the figure." A narrow window
+is an optional future refinement, but the default must reproduce paper2llm's
+whole-page behavior.
+
+Two precision notes for the implementer:
+- In paper2llm the preamble's page number is derived from the image id
+  (`image.id.split("-")[0]`, `"unknown"` if absent), **not** a true page number.
+  inscriber's ids are `fig_p{page}_{i}` (§8.3), so use the real page number `N`
+  directly — do **not** port the `.split("-")[0]` literally (it would yield the
+  whole id).
+- paper2llm does **not** extract captions separately for context — context is
+  purely the whole-page text, and any caption is included only because it lives
+  in that text. (`Region.text` from §8.3 feeds the `{caption_or_label}` in
+  `describe-and-keep` output, §10.2 — a distinct use from context.)
 
 ### 9.6 VLM caching
 
 Same scheme as §8.5, keyed on `(figure_crop_hash, vlm_backend_name,
-vlm_model_identity, prompt)`. Lets you re-run the document (e.g. to re-split or
-re-fetch BibTeX) without re-describing figures.
+vlm_model_identity, vlm_mmproj_identity, full_assembled_prompt, sampling_params)`.
+The key uses the **fully assembled prompt — context text included** — not just a
+template name; otherwise changing `context_chars` or the page text would serve a
+stale description. Lets you re-run the document (e.g. to re-split or re-fetch
+BibTeX) without re-describing figures.
 
 ---
 
@@ -593,28 +723,43 @@ part of the cleanup pass (§10.3).
 
 ### 10.2 Figure injection
 
-Replace each `⟦INSCRIBER_FIG:{id}⟧` placeholder with the assembled figure block.
-**Match paper2llm's actual output format** (`markdown-processor.ts`,
-`enhanceImageReferences`): the `<img_desc>…</img_desc>` tags are only the model's
-*response envelope* — they are **stripped** (§9.4), and the extracted text is
-rendered as a **Markdown blockquote with a bold header**, each line prefixed with
-`> `:
+Replace each `⟦INSCRIBER_FIG:{id}⟧` placeholder (spliced in at §8.3 step 4) with
+the assembled figure block. The `<img_desc>…</img_desc>` tags are only the
+model's *response envelope* — they are **stripped** (§9.4) — and the extracted
+text is rendered as a **Markdown blockquote with a bold header**, every line
+prefixed with `> ` (including blank lines, which become `>` so the blockquote
+doesn't break across paragraphs/lists in the description).
 
-```markdown
-> **Image.** {generated description, wrapped as a blockquote}
-```
+⚠️ **Port the *format*, not the mechanism.** paper2llm's `enhanceImageReferences`
+works by regex-matching the inline `![alt](src)` image syntax that Mistral OCR
+emits and keying on image id. DeepSeek-OCR grounding produces **no inline
+`![]()`** — which is exactly why §8.3 splices a `⟦INSCRIBER_FIG:{id}⟧` placeholder
+where each figure was. So reuse only the blockquote/header **formatting** from
+`enhanceImageReferences`; the `![]()`-matching loop does not apply.
 
-Config `figure.mode` controls the variant (mirrors paper2llm's `MarkdownOptions`):
-- **`describe-and-keep`** (default) — keep the original image reference *and* add
-  the description blockquote (paper2llm's `keepOriginalImages`):
+The **exact header string matters** (the `ensureImageDescriptionSpacing` regex
+and downstream tooling depend on it), and paper2llm uses **two different**
+headers:
+- a real description → **`> **Image description.**`** (`markdown-processor.ts:298`);
+- the no-description placeholder → **`> **Image.** [not displayed]`**
+  (`markdown-processor.ts:329`).
+
+Config `figure.mode` (mirrors paper2llm's `MarkdownOptions`):
+- **`describe-only`** (**default — matches paper2llm**, whose `keepOriginalImages`
+  defaults off, i.e. the image is *replaced* by the description): emit just
+  ```markdown
+  > **Image description.** {description}
+  ```
+- **`describe-and-keep`** (paper2llm's `keepOriginalImages = true`; recommended
+  for inscriber since we save crops to `figures/` anyway) — keep an image
+  reference **and** the description:
   ```markdown
   ![{caption_or_label}](figures/{id}.png)
 
-  > **Image.** {description}
+  > **Image description.** {description}
   ```
-- **`describe-only`** — the description blockquote only, image reference removed.
-- **`placeholder`** — no description; emit paper2llm's exact placeholder
-  (`replaceImagesWithPlaceholder`): `> **Image.** [not displayed]`.
+- **`placeholder`** (`replaceImagesWithPlaceholder`): emit
+  `> **Image.** [not displayed]` (note: `Image.`, not `Image description.`).
 
 > Do **not** leave raw `<img_desc>` tags in the output — they are an internal
 > protocol with the VLM, not part of the document.
@@ -629,10 +774,13 @@ free from Mistral's whole-document OCR).
 - **`normalizeLineBreaks`** — collapse 3+ consecutive newlines to a single blank
   line (`\n{3,}` → `\n\n`).
 - **`ensureImageDescriptionSpacing`** — guarantee a blank line **before and
-  after** each `> **Image.** …` description blockquote, and around any
-  `Figure …` caption line that immediately follows an image block. Operates
-  line-by-line; matches `^> \*\*(?:Image description|Image Description|Image)\.\*\*`
-  and `^Figure `. This is what keeps descriptions from fusing into adjacent text.
+  after** each description blockquote (`> **Image description.** …`, and the
+  `> **Image.** [not displayed]` placeholder), and around any `Figure …` caption
+  line that immediately follows an image block. Operates line-by-line; the real
+  regex (`markdown-processor.ts:112`) is
+  `^> \*\*(?:Image description|Image Description|Image)\.\*\*` (it tolerates all
+  three header spellings — keep it as-is) and `^Figure `. This keeps descriptions
+  from fusing into adjacent text.
 
 **(b) New for inscriber** (per-page OCR artifacts) — heuristic, conservative
 (never delete content we're unsure about), toggled by `--no-clean`:
@@ -669,19 +817,31 @@ insensitive, any heading level `#+`):
   - `A ` / `A. ` style appendix headings — **only accepted if they occur after
     the acknowledgments match** (guards against false positives like "A " in
     body text).
-- Title is extracted from the first `# Title` heading.
-- If a `#### Page N` marker immediately precedes a split boundary, the boundary
-  is moved before it so page markers don't dangle.
+- Title is extracted from the first `# Title` heading, with paper2llm's
+  fallbacks: if absent, try a BibTeX `title={…}` field, else default to
+  `"Untitled_Paper"` (`markdown-splitter.ts` `extractTitle`).
+- If a page marker immediately precedes a split boundary, the boundary is moved
+  before it so page markers don't dangle. The marker regex tolerates **H3 or
+  H4** (`^#{3,4}\s+Page\s+\d+\s*$`), though inscriber emits `#### Page N`.
 
 Outputs `MarkdownSections(main_content, backmatter | None, appendix | None,
-title)`. The three regions are: `main = [0, backmatter_start)` (or to appendix if
-no backmatter), `backmatter = [backmatter_start, appendix_start)`,
-`appendix = [appendix_start, end)`.
+title)`. Positionally in the source, backmatter (acknowledgments/references)
+usually precedes the appendix, so the regions are: `main = [0, backmatter_start)`
+(or to appendix if no backmatter), `backmatter = [backmatter_start,
+appendix_start)`, `appendix = [appendix_start, end)`.
+
+**Standalone split files** must carry paper2llm's section framing (don't just
+dump the raw slice): the **main** file's first H1 is normalized to the canonical
+title (`prepareFormattedSections`), and standalone **appendix**/**backmatter**
+files are prefixed with `# {title} - Appendix` / `# {title} - Backmatter` +
+`\n\n---\n\n` (`content-utils.ts` `getSectionContent`, `markdown-splitter.ts`).
 
 **Combined / "allparts" assembly** (paper2llm's `getSectionContent("allparts")`):
 the parts can also be re-joined into a single document where appendix and
-backmatter are reintroduced under derived headings, in order
-main → appendix → backmatter:
+backmatter are reintroduced under derived headings. ⚠️ Note the **deliberate
+reordering**: although backmatter precedes appendix *positionally* in the source,
+`allparts` re-emits in order **main → appendix → backmatter**
+(`content-utils.ts:43-66`). This is faithful — don't "fix" it.
 
 ```markdown
 {main_content}
@@ -711,28 +871,50 @@ network access** and is therefore **opt-in** (`--bibtex` / config
 `bibtex.enabled = true`).
 
 - Extract the paper **title** from the document (`# Title`, §11).
-- Query the **Semantic Scholar** API to find the best-matching paper; retrieve
-  metadata (authors, year, venue, DOI, arXiv id, etc.).
-- Format a BibTeX entry. Generate a citation key (e.g. `firstauthorYEARword`).
-- **Title validation:** compare the document title with the returned entry's
-  title under a normalized (lowercased, punctuation-stripped) comparison
-  (paper2llm's `BibTeXTitleValidation`). If they **don't** match, still emit the
-  entry but prepend paper2llm's exact warning comment so the user can verify:
-  ```bibtex
+- Query the **Semantic Scholar** API (`fields=title,authors,venue,year,abstract,
+  externalIds,url`, `maxResults` 3) and take the **first result** (`results[0]`)
+  as the best match. Generate a citation key like
+  `{firstAuthorLastName}{year}{firstSubstantiveTitleWord}` (skip-words list in
+  `bibtex-generator.ts`). Note Semantic Scholar is **rate-limited** for
+  unauthenticated use — degrade gracefully on 429.
+- **No result / API error → mock fallback** (don't just drop it): paper2llm
+  synthesizes a placeholder entry (`@article{unknownYear, …}`) prefixed with
+  `% WARNING: This is a fallback mock citation.` and signals failure to callers
+  by returning **`bibtex === ""`** (empty string) — this empty-string sentinel is
+  what drives the retry path. Port both the mock entry and the sentinel.
+- **Title validation:** compare document title vs. returned title under a
+  normalized (lowercased, punctuation-stripped) comparison
+  (`BibTeXTitleValidation`). On mismatch, still emit the entry but prepend
+  paper2llm's **exact 4-line** warning (note the trailing `% ` line):
+  ```
   % WARNING: The retrieved citation title may not match the paper title.
   % Paper title: "{original_title}"
   % Citation title: "{bibtex_title}"
-  @article{...}
+  % 
   ```
-- **Placement (two options, both from paper2llm):**
-  - write a standalone `paper.bib` (default), **and/or**
-  - **append the entry into the document** (`bibtex.append_to_document`) — appended
-    only to the full / main / combined outputs, matching
-    `getContentWithOptionalBibtex` (`section ∈ {full, main, allparts}`).
-- Respects `--offline` (skips with a clear message) and network failure
-  (warns, continues without BibTeX — never fails the whole run for this). On a
-  failed lookup, the run can be retried on demand later (paper2llm's
-  `retryBibtexGeneration`).
+- **Placement** (`content-utils.ts` `getContentWithOptionalBibtex`):
+  - write a standalone `paper.bib` (default); **and/or**
+  - **inject the entry into the document** (`bibtex.append_to_document`). ⚠️
+    paper2llm **prepends** it (before the content) and wraps it in a **fenced
+    code block** with a `---` separator — not a bare append:
+    ````
+    ```
+    {bibtex, incl. any % WARNING lines}
+    ```
+
+    ---
+
+    {document content}
+    ````
+    Only for `section ∈ {full, main, allparts}`.
+- Respects `--offline` (skips with a clear message) and network failure (warns,
+  continues — never fails the whole run for BibTeX).
+- **On `retryBibtexGeneration` (§24 row 17):** in paper2llm this is an
+  *interactive UI affordance* (re-run when the user ticks the include-BibTeX box
+  after a prior failure). A one-shot CLI has no such surface, so it is **not a
+  faithful pipeline port** — model it as "re-running with `--bibtex` (cache makes
+  this cheap) re-attempts the lookup," and it is listed under reclassified items,
+  not as a literal feature.
 
 ---
 
@@ -752,9 +934,8 @@ Precedence: **CLI flag > config file > built-in default.**
 [llama]
 bin_dir = "/opt/llama.cpp/build/bin"   # folder containing llama-server[.exe]
 host = "127.0.0.1"
-# port is auto-selected (free port) unless set here
+port = 0                               # 0 = auto-select a free port
 server_start_timeout = 120             # seconds to wait for /health
-n_gpu_layers = 0                       # -ngl; 0 = CPU only
 ctx_size = 8192                        # -c
 
 [inference]
@@ -764,19 +945,23 @@ mode = "sequential"                    # "sequential" | "concurrent"
 backend = "deepseek-ocr"               # registry key
 model = "/models/deepseek-ocr-f16.gguf"
 mmproj = "/models/mmproj-deepseek-ocr-f16.gguf"
-resolution = "large"                   # "base" | "standard" | "large" | "gundam"
+resolution = "large"                   # tiny | small | base | large | gundam
+n_gpu_layers = 0                       # -ngl for the OCR server (per-server)
 endpoint = ""                          # if set, use this URL; don't spawn server
 
 [vlm]
 backend = "gemma"
-model = "/models/gemma-4-e4b-f16.gguf"
+model = "/models/gemma-4-e4b-f16.gguf" # placeholder name; user-supplied (§2.3)
 mmproj = "/models/mmproj-gemma-4-e4b.gguf"
+n_gpu_layers = 0                       # -ngl for the VLM server (per-server)
 endpoint = ""
 
 [figure]
-mode = "describe-and-keep"             # | "describe-only" | "placeholder"
+enabled = true                         # false = don't detect/describe figures
+mode = "describe-only"                 # describe-only (paper2llm default) |
+                                       #   describe-and-keep | placeholder
 crop_padding = 0.02                    # fraction of page dims
-context_chars = 1500                   # context window around each figure
+context_chars = 2000                   # whole-page context truncation cap (§9.5)
 
 [output]
 dir = "."                              # output directory
@@ -785,10 +970,19 @@ page_numbers = false                   # insert "#### Page N" before each page
 page_separators = false                # insert "---" between pages
 normalize_line_breaks = true           # collapse excess blank lines
 clean = true                           # header/footer + de-hyphenation pass
+clobber = true                         # overwrite existing outputs
+
+[cache]
+enabled = true                         # false ⇔ --no-cache (no read, no write)
+refresh = false                        # true ⇔ --refresh (recompute + overwrite)
+
+[workdir]
+path = ""                              # "" = OS temp dir; else explicit dir
+keep_intermediates = false             # keep page/crop images on success
 
 [bibtex]
 enabled = false                        # online; opt-in
-append_to_document = false             # also append entry into full/main output
+append_to_document = false             # also inject (prepend, fenced) into doc
 
 [net]
 offline = false                        # hard-disable all network use
@@ -807,37 +1001,82 @@ inscriber INPUT [options]
 
   # model / llama overrides
       --llama-bin-dir DIR
+      --host HOST               llama-server bind host (default 127.0.0.1)
+      --port N                  fixed port (default 0 = auto)
       --ocr-backend NAME        e.g. deepseek-ocr
       --ocr-model PATH
       --ocr-mmproj PATH
-      --ocr-resolution MODE     base|standard|large|gundam
+      --ocr-resolution MODE     tiny|small|base|large|gundam
+      --ocr-ngl N               GPU layers for the OCR server
       --ocr-endpoint URL        use running server; don't spawn
       --vlm-backend NAME
       --vlm-model PATH
       --vlm-mmproj PATH
+      --vlm-ngl N               GPU layers for the VLM server
       --vlm-endpoint URL
-      --ngl N                   GPU layers
       --ctx N                   context size
       --mode {sequential,concurrent}
 
   # pipeline behavior
-      --figure-mode {describe-and-keep,describe-only,placeholder}
-      --no-figures              skip figure detection/description entirely
+      --figure-mode {describe-only,describe-and-keep,placeholder}
+      --no-figures              disable figure detection/description (figure.enabled=false)
+      --crop-padding FRAC       figure crop margin (fraction of page dims)
+      --context-chars N         whole-page context truncation cap
       --no-split                write only the full document
       --page-numbers            insert "#### Page N" before each page
       --page-separators         insert "---" between pages
       --no-clean                skip header/footer + de-hyphenation cleanup
+      --no-clobber              error instead of overwriting existing outputs
       --bibtex                  fetch BibTeX (requires network)
-      --bibtex-in-doc           also append the BibTeX entry into the document
+      --bibtex-in-doc           also inject the BibTeX entry into the document
       --offline                 disable ALL network use (URL input + bibtex)
 
   # caching / debugging
-      --no-cache / --refresh    bypass / rebuild the OCR & VLM caches
+      --no-cache                neither read nor write caches
+      --refresh                 ignore + recompute + overwrite caches
       --workdir DIR             where intermediate page/crop images go
       --keep-intermediates      don't delete the work dir on success
   -v, --verbose / -q, --quiet
       --version
 ```
+
+> **`--no-figures` semantics** differ from paper2llm and the doc must be explicit:
+> here it means "don't detect or describe figures at all" (no crops, no VLM
+> server, figure regions are just stripped from the markdown). paper2llm has no
+> true off switch — when its vision model is "None" it still routes through
+> `replaceImagesWithPlaceholder` and emits `> **Image.** [not displayed]` for
+> every detected image. To reproduce *that* behavior, use
+> `--figure-mode placeholder` (detect + placeholder), not `--no-figures`.
+
+### 13.3 Config ↔ CLI mapping (the "every field is overridable" contract)
+
+| config key | CLI flag |
+|---|---|
+| `llama.bin_dir` | `--llama-bin-dir` |
+| `llama.host` / `llama.port` | `--host` / `--port` |
+| `llama.ctx_size` | `--ctx` |
+| `ocr.backend` / `ocr.model` / `ocr.mmproj` | `--ocr-backend` / `--ocr-model` / `--ocr-mmproj` |
+| `ocr.resolution` / `ocr.n_gpu_layers` / `ocr.endpoint` | `--ocr-resolution` / `--ocr-ngl` / `--ocr-endpoint` |
+| `vlm.*` | `--vlm-backend` / `--vlm-model` / `--vlm-mmproj` / `--vlm-ngl` / `--vlm-endpoint` |
+| `inference.mode` | `--mode` |
+| `figure.enabled` | `--no-figures` (sets false) |
+| `figure.mode` | `--figure-mode` |
+| `figure.crop_padding` / `figure.context_chars` | `--crop-padding` / `--context-chars` |
+| `output.dir` | `-o/--output-dir` |
+| `output.split` | `--no-split` (sets false) |
+| `output.page_numbers` / `output.page_separators` | `--page-numbers` / `--page-separators` |
+| `output.clean` | `--no-clean` (sets false) |
+| `output.clobber` | `--no-clobber` (sets false) |
+| `cache.enabled` / `cache.refresh` | `--no-cache` / `--refresh` |
+| `workdir.path` / `workdir.keep_intermediates` | `--workdir` / `--keep-intermediates` |
+| `bibtex.enabled` / `bibtex.append_to_document` | `--bibtex` / `--bibtex-in-doc` |
+| `net.offline` | `--offline` |
+| (page range — inscriber-only, §7) | `--pages` |
+
+`server_start_timeout` and `normalize_line_breaks` are config-only in v1
+(rarely changed); if the "every field overridable" promise is to be literal, add
+`--server-timeout` / `--no-normalize-breaks`. Either decide they're config-only
+and soften the §1.2 wording, or add the flags — don't leave the contradiction.
 
 ---
 
@@ -857,12 +1096,17 @@ OUT/
     └── ...
 ```
 
-- Base name: from the PDF filename, or from the domain handler's
-  `file_name(url)` for URL inputs.
+- Base name: the PDF filename **stem** (`Path(...).stem`), or the domain
+  handler's `file_name(url)` for URL inputs. Sanitize so a source literally named
+  `paper.main.pdf` can't collide with the `paper.main.md` split output.
+- `paper.md` is the **full** document (the enhanced, stitched markdown).
+  `figures/` is written when `figure.mode = describe-and-keep` (the only mode
+  that references the crops); other modes don't emit it unless
+  `--keep-intermediates` is set.
 - All files written **UTF-8 explicitly**, with `\n` newlines (don't let Windows
   inject `\r\n`).
-- Never overwrite silently if `--no-clobber` is set (optional nicety); default
-  is overwrite, matching typical CLI expectations — but log each file written.
+- Default overwrites existing outputs (`output.clobber = true`), logging each
+  file written; `--no-clobber` makes a pre-existing target a hard error instead.
 
 ---
 
@@ -881,8 +1125,18 @@ These are hard requirements, not nice-to-haves:
 - **Config/cache/data dirs:** `platformdirs` (`user_config_dir`,
   `user_cache_dir`, `user_data_dir`) — never hardcode `~/.config`.
 - **File encoding:** always `encoding="utf-8"`, `newline="\n"` when writing text.
-- **Temp/work dir:** `tempfile.mkdtemp()` or `--workdir`; clean up via
-  contextmanager so it survives Ctrl-C handling.
+- **Temp/work dir:** `tempfile.mkdtemp()` or `workdir.path`; managed by a
+  contextmanager. **Delete on success** (unless `keep_intermediates`); **keep on
+  failure/Ctrl-C** for debugging.
+- **`tomli`** is a *conditional* dependency only — declare it
+  `tomli; python_version < "3.11"` and do `import tomllib` with a `tomli`
+  fallback (3.11+ has `tomllib` in the stdlib). Don't add it unconditionally.
+- **`shutil.which`** (the PATH fallback in §5.2) honors `PATHEXT` on Windows, so
+  it finds `llama-server.exe` without manual suffixing.
+- **`--offline` does not gate the local servers.** The OCR/VLM `llama-server`
+  processes are loopback (`127.0.0.1`), not "network" in the privacy sense —
+  `--offline` only disables URL input and BibTeX. Do **not** wrongly block server
+  spawn behind `--offline`.
 - **GPU backend** (Metal on macOS, CUDA/Vulkan/etc. on Win/Linux) is whatever
   the user's llama.cpp build supports. `inscriber` stays agnostic and only
   passes `-ngl`.
@@ -901,7 +1155,11 @@ These are hard requirements, not nice-to-haves:
   enough; a progress bar (e.g. `rich`/`tqdm`) is a nice-to-have.
 - **Resilience:** a single figure that fails to describe should not kill the run
   — log it, insert a `[figure description unavailable]` placeholder, continue.
-  Same for BibTeX network failure.
+  Same for BibTeX network failure, and for an OCR page that loops/truncates
+  (§2.2): best-effort parse what came back, log, move on.
+- **stdout vs stderr:** progress/logs go to **stderr**; on completion print the
+  **list of written file paths to stdout** (one per line) so the run is
+  machine-parseable even under `-q`.
 - **Server failures:** on a `/health` timeout or non-200 chat responses, include
   the tail of the captured server log in the error so the user can diagnose
   (wrong model/mmproj pairing, OOM, bad flags).
@@ -971,8 +1229,8 @@ llama.cpp over HTTP.
   **sequential** mode (§5.4) keeps only one resident at a time — the default for
   good reason.
 - **Resolution** is the main speed/quality lever: `large` (default) is a good
-  balance; `gundam` (tiled) is best for dense two-column papers but noticeably
-  slower; `base`/`standard` are the speed escape hatches.
+  balance; `gundam` (model-side tiling) is best for dense two-column papers but
+  noticeably slower; `base`/`small`/`tiny` are the speed escape hatches.
 - **Caching** (§8.5/§9.6) makes iteration cheap — changing split/figure/bibtex
   options re-runs in seconds because OCR and VLM results are reused.
 - **GPU offload** via `-ngl` is the biggest wall-clock win when available; left
@@ -997,19 +1255,27 @@ llama.cpp over HTTP.
 1. **M0 — Skeleton.** Project layout, `pyproject.toml`, CLI argparse →
    `RunConfig`, TOML config load/merge/validate, logging. `inscriber --version`
    and config errors work.
-2. **M1 — OCR vertical slice.** `LlamaServerManager` (spawn/health/teardown),
-   chat client, `DeepSeekOcrBackend` **with parser locked to real recorded
-   output**, PyMuPDF rasterize. Produce per-page markdown for a real PDF (no
-   figures yet). OCR cache in place.
-3. **M2 — Figures.** Grounding-bbox cropping, VLM server + `GemmaVlmBackend`,
-   figure-description prompt + extraction, context windows, injection into
-   markdown. VLM cache.
-4. **M3 — Assembly & splitting.** Stitching, header/footer + de-hyphenation
-   cleanup, splitter (ported heuristics), output writer (full + splits +
-   figures/).
-5. **M4 — Inputs & BibTeX.** URL input + domain handlers, `--offline`, optional
-   Semantic Scholar BibTeX with title validation.
-6. **M5 — Hardening.** Cross-platform CI matrix, mocked end-to-end tests,
+2. **M1a — De-risk spike (do this first).** `LlamaServerManager`
+   (spawn/health/teardown) + chat client + PyMuPDF rasterize, then **the two
+   highest-risk unknowns**: (i) prove a base64 image round-trips through
+   DeepSeek-OCR on `/v1/chat/completions` for the pinned llama.cpp build, *or*
+   fall back to `llama-mtmd-cli` (§2.1 C-note); (ii) **capture real grounding
+   output** to `tests/fixtures/` and confirm the token format **and the
+   coordinate/padding frame** (§8.3). Nothing else can be trusted until this
+   lands.
+3. **M1b — OCR vertical slice.** `DeepSeekOcrBackend.ocr_page` with the parser +
+   padding-correction **locked to the M1a fixtures**, the OCR cache, and
+   per-page markdown (with `⟦INSCRIBER_FIG⟧` placeholders) for a real PDF.
+4. **M2 — Figures.** Grounding-bbox cropping (§8.4), VLM server +
+   `GemmaVlmBackend`, figure-description prompt + extraction, whole-page context,
+   blockquote injection at placeholders (§10.2). VLM cache.
+5. **M3 — Assembly & splitting.** Stitching, the ported light post-processing +
+   new cleanup (§10.3), splitter with standalone-file headers (§11), output
+   writer (full + splits + figures/).
+6. **M4 — Inputs & BibTeX.** URL input + the 7 domain configs (§6), `--offline`,
+   optional Semantic Scholar BibTeX with title validation, mock fallback, and
+   prepend/fenced injection (§12).
+7. **M5 — Hardening.** Cross-platform CI matrix, mocked end-to-end tests,
    `concurrent` mode, docs/README, packaging to PyPI.
 
 ---
@@ -1039,7 +1305,7 @@ Logic ported (reimplemented in Python), not shared as a library:
 | `core/templates/image-prompt-template.ts` | `postprocess/prompt.py` | Prompt + `<img_desc>` extractor — used verbatim |
 | `core/utils/markdown-splitter.ts` | `postprocess/splitter.py` | Section regexes + boundary logic |
 | `core/utils/bibtex-generator.ts` | `bibtex/semantic_scholar.py` | Semantic Scholar lookup + title validation |
-| `core/domain-handlers/*` | `input/domain_handlers.py` | arXiv/OpenReview/bioRxiv/generic |
+| `core/domain-handlers/{base,generic,index}-handler.ts` | `input/domain_handlers.py` | One config-driven `GenericDomainHandler`; port the **7 repo regex configs** (§6) |
 | `core/ocr-service.ts` (Mistral) | `ocr/` backends | Replaced by local llama.cpp OCR |
 | `core/image-service*.ts` (cloud VLMs) | `vlm/` backends | Replaced by local llama.cpp VLM |
 | API-key storage/encryption | — | Not needed; no cloud keys in core flow |
@@ -1056,14 +1322,14 @@ implementation. Paths are relative to `paper2llm-web/src/`.
 | # | paper2llm feature | Keep? | `inscriber` § | Reference source in paper2llm |
 |---|---|---|---|---|
 | 1 | PDF file input + validation | ✅ | §6 | `adapters/web/file-handler.ts` |
-| 2 | URL input + domain handlers (arXiv, OpenReview, bioRxiv, generic) | ✅ | §6 | `core/domain-handlers/*`, `core/domain-handler-registry.ts`, `file-handler.ts` |
+| 2 | URL input + domain handlers (**7 repos**: arXiv, OpenReview, ACL, bioRxiv, medRxiv, NeurIPS, MLRP; no generic fallback) | ✅ | §6 | `core/domain-handlers/{base,generic,index}-handler.ts` (one config-driven handler; `createAllRepositoryHandlers`) |
 | 3 | Page-count detection + **page-range selection** | ✅ | §7 | `core/utils/pdf-page-utils.ts`, `web/components/PageRangeSelector.tsx` |
 | 4 | OCR of text / tables / equations | ✅ (local) | §8 | `core/ocr-service.ts` (Mistral → DeepSeek-OCR) |
 | 5 | Figure description via vision model | ✅ (local) | §9 | `core/image-service.ts`, `core/image-services/*` (cloud → llama.cpp VLM) |
 | 6 | Image **context = whole page text** (~2000-char cap, preamble) | ✅ | §9.5 | `core/markdown-processor.ts` → `buildImageContextMap`, `extractImageContext` |
 | 7 | Figure-description **prompt template** + `<img_desc>` extraction | ✅ (verbatim) | §9.3–9.4 | `core/templates/image-prompt-template.ts` |
-| 8 | Figure rendered as **blockquote** `> **Image.** …` | ✅ | §10.2 | `core/markdown-processor.ts` → `enhanceImageReferences` |
-| 9 | Figure modes: keep-image / describe-only / **placeholder** `[not displayed]` | ✅ | §10.2, §13 | `MarkdownOptions` (`keepOriginalImages`, `replaceImagesWithPlaceholder`) in `types/interfaces.ts` + `markdown-processor.ts` |
+| 8 | Figure as **blockquote** `> **Image description.**` (placeholder uses `> **Image.** [not displayed]`); format ported, `![]()` matching loop not | ✅ | §10.2 | `core/markdown-processor.ts` → `enhanceImageReferences` (`:298`, `:329`) |
+| 9 | Figure modes: **describe-only (default, =paper2llm)** / describe-and-keep / placeholder | ✅ | §10.2, §13 | `MarkdownOptions` (`keepOriginalImages` defaults **off**, `replaceImagesWithPlaceholder`) in `types/interfaces.ts` + `markdown-processor.ts` |
 | 10 | Page **numbers** (`#### Page N`) and page **separators** (`---`) | ✅ | §10.1 | `core/markdown-processor.ts` (`addPageNumbers`, `addPageSeparators`) |
 | 11 | `normalizeLineBreaks` (collapse 3+ blank lines) | ✅ | §10.3(a) | `core/markdown-processor.ts` |
 | 11b | `ensureImageDescriptionSpacing` (blank lines around `> **Image.**` blocks & `Figure …` captions) | ✅ | §10.3(a) | `core/markdown-processor.ts` → `ensureImageDescriptionSpacing` |
@@ -1071,13 +1337,28 @@ implementation. Paths are relative to `paper2llm-web/src/`.
 | 13 | **Combined "allparts"** with `# {title} - Appendix/Backmatter` headers | ✅ | §11 | `web/components/markdown-preview/utils/content-utils.ts` → `getSectionContent` |
 | 14 | **BibTeX** generation (Semantic Scholar) | ✅ (online, opt-in) | §12 | `core/utils/bibtex-generator.ts` |
 | 15 | BibTeX **title validation** + `% WARNING` mismatch comment | ✅ | §12 | `bibtex-generator.ts`, `content-utils.ts`, `BibTeXTitleValidation` in `types/interfaces.ts` |
-| 16 | Include/**append BibTeX into the document** | ✅ | §12 | `content-utils.ts` → `getContentWithOptionalBibtex` |
-| 17 | BibTeX **retry on demand** after a failed lookup | ✅ | §12 | `web/components/markdown-preview/hooks/useCopyDownload.ts` → `retryBibtexGeneration` |
+| 15b | BibTeX **mock fallback** entry + empty-string failure sentinel | ✅ | §12 | `bibtex-generator.ts`, `content-utils.ts` |
+| 16 | **Inject BibTeX into document** — *prepended*, fenced code block, `---` separator | ✅ | §12 | `content-utils.ts:195` → `getContentWithOptionalBibtex` |
+| 17 | BibTeX retry on demand | ⤳ Reclassified | §12 | UI affordance (`useCopyDownload.ts` `retryBibtexGeneration`); no CLI analog — re-run with `--bibtex` |
 | 18 | Output **filename** derived from source (PDF name / URL handler) | ✅ | §14 | `useCopyDownload.ts`, domain handlers |
 | 19 | **Progress reporting** per stage | ✅ | §16 | `adapters/web/progress-reporter.ts`, `web/components/ProcessingStatus.tsx` |
 | 20 | **Cancel** an in-flight operation | ✅ (Ctrl-C → teardown) | §5.3, §16 | `OcrService.cancelOperation`, `ImageService.cancelOperation` |
 | 21 | Debug mode (verbose / keep intermediates) | ✅ | §13, §16 | `MarkdownOptions.debugMode` |
 | 22 | Multi-**provider** model selection (Mistral/OpenAI/Gemini/Anthropic) | ⤳ Replaced | §8.1, §9.2 | `core/image-services/image-service-factory.ts` → replaced by pluggable local OCR/VLM **backends** |
+
+**`MarkdownOptions` flag accounting** (all 8): `addPageNumbers`,
+`addPageSeparators` (§10.1); `normalizeLineBreaks` (§10.3a); `processImages`
+(→ `figure.enabled`/`--no-figures`, with the placeholder caveat in §13.2);
+`keepOriginalImages`, `replaceImagesWithPlaceholder` (→ `figure.mode`, §10.2);
+`debugMode` (→ `-v`/`--keep-intermediates`). **`extractImageReferences`** only
+populates a bookkeeping `imageReferences[]` list for UI use — **dropped** as
+internal; inscriber tracks figures via `Region`/placeholders instead.
+
+> **Latent-bug warning — do not replicate:** `content-utils.ts:237`'s
+> `calculateImageMetrics` counts described images with the regex
+> `/> \*\*Image Description:\*\*/g` (capital D, colon), which does **not** match
+> the text actually emitted (`> **Image description.**`, lowercase, period). It's
+> a real paper2llm bug; if any image-metrics logic is ported, fix the regex.
 
 ### Intentionally **dropped** (cloud/UI-only, no local analog)
 
@@ -1094,6 +1375,73 @@ implementation. Paths are relative to `paper2llm-web/src/`.
 > equivalent set as **files** (§14). The content-shaping logic behind those
 > variants — section assembly, optional BibTeX, per-section titles — is the part
 > worth porting (`content-utils.ts`); the menu/UI around it is not.
+
+---
+
+## 25. End-to-end worked example (one page, one figure)
+
+A concrete trace threading §7→§12 for `paper.pdf`, page 3, which contains one
+figure. This is the canonical example the M1a fixtures should capture.
+
+**1. Rasterize (§7).** Page 3 (A4, 595×842 pt) at `large` (1280px long edge):
+`zoom = 1280/842 ≈ 1.52`, producing `PageImage(page_number=3, png, W=905, H=1280)`.
+
+**2. OCR call (§8.3).** `DeepSeekOcrBackend.ocr_page` sends the page PNG with
+prompt `<|grounding|>OCR`, `temperature: 0`, `max_tokens` capped. Raw output
+(illustrative, to be replaced by a real M1a fixture):
+
+```
+## 3. Method
+
+We train the model as shown below.
+
+<|ref|>figure<|/ref|><|det|>[[101, 240, 880, 612]]<|/det|>
+
+Figure 1: Training pipeline overview.
+```
+
+**3. Parse + frame-correct (§8.3).** One figure span, coords `[101,240,880,612]`
+on the 0–999 grid of the **padded 1280² square**. Undo padding on the short axis
+(`pad = (1280−905)/2 = 187.5`):
+`x_px = [101,880]/999*1280 = [129, 1127]`, minus pad → `[−58, 940]` clamped to
+`[0, 905]`; `y_px = [240,612]/999*1280 = [307, 784]`. Normalize to the original
+page → `bbox_norm ≈ (0.0, 0.24, 1.0, 0.61)`. The figure span is **replaced** by a
+placeholder (not deleted); `Region.text = "Figure 1: Training pipeline overview."`
+Resulting `OcrPageResult.markdown`:
+
+```
+## 3. Method
+
+We train the model as shown below.
+
+⟦INSCRIBER_FIG:fig_p3_1⟧
+
+Figure 1: Training pipeline overview.
+```
+
+**4. Crop (§8.4).** `bbox_norm` × `(905,1280)` + 2% margin → crop saved as
+`figures/fig_p3_1.png`.
+
+**5. VLM call (§9).** Context = page 3's whole text (≤2000 chars) with the
+preamble `This image appears on page 3. …`; prompt assembled per §9.3; Gemma 4
+returns `<img_desc>A flow diagram showing … </img_desc>`; §9.4 extracts the inner
+text.
+
+**6. Inject (§10.2), default `describe-only`.** The placeholder is replaced by:
+
+```
+> **Image description.** A flow diagram showing the three-stage training
+> pipeline: data ingestion, pretraining, and fine-tuning, connected left to
+> right by arrows.
+```
+
+(With `describe-and-keep`, an `![Figure 1: …](figures/fig_p3_1.png)` line precedes
+it.) §10.3 `ensureImageDescriptionSpacing` guarantees blank lines around the
+block and the trailing `Figure 1:` caption.
+
+**7. Assemble / split / write (§10–§14).** Pages concatenated → cleanup → split →
+`paper.md` (full), `paper.main.md` / `paper.appendix.md` / `paper.backmatter.md`
+as detected, `figures/fig_p3_1.png`, and `paper.bib` if `--bibtex`.
 
 ---
 
