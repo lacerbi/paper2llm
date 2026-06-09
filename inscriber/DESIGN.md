@@ -120,11 +120,14 @@ So **every** model `inscriber` uses (OCR and VLM) is configured as a
   2026-03-25). Requires a `deepseek-ocr` model GGUF + `mmproj-deepseek-ocr`
   projector GGUF; reference GGUFs live in the `ggml-org/DeepSeek-OCR-GGUF` HF
   collection.
-- **Version note:** a successor, **`deepseek-ai/DeepSeek-OCR-2`** (2026), exists
-  on Hugging Face. Whether the pinned llama.cpp build's PR #17400 path targets
-  the original or v2 — and whether v2 needs a different mmproj/prompt — is an
-  **M1 verification item**. Same model family and grounding scheme either way;
-  v1 targets whichever DeepSeek-OCR version the build supports.
+- **Version note (settled).** A successor, **DeepSeek-OCR-2** (official; arXiv
+  2601.20552 "Visual Causal Flow", deepseek-ai, ~27 Jan 2026, Apache-2.0, new
+  DeepEncoder V2), exists and is real — but **llama.cpp supports only the
+  *original* DeepSeek-OCR** (arXiv 2510.18234, the DeepSeek3B-MoE-A570M decoder).
+  **PR #17400 targets the original**, all ready-to-use GGUFs are for the original,
+  and there is **no llama.cpp PR/issue for v2** as of June 2026. So **v1 targets
+  the original DeepSeek-OCR**; DeepSeek-OCR-2 is future work, gated on upstream
+  llama.cpp support (§22.2).
 - **Quirks (must be respected):**
   - Use **f16** weights. **Q4_K_M causes runaway repetition loops** because the
     upstream model uses an **n-gram repetition penalty (ngram_size≈30,
@@ -1585,6 +1588,10 @@ is wired.
 
 - **More grounding-capable OCR backends** — Dots.OCR (#17575, JSON layout *with*
   boxes; natural next backend) and HunyuanOCR (#21395).
+- **DeepSeek-OCR-2** (arXiv 2601.20552, DeepEncoder V2 "Visual Causal Flow",
+  +3.73% OmniDocBench over the original) — a likely upgrade once it has a
+  **llama.cpp path**, which does not exist yet (no PR/GGUFs as of June 2026). Its
+  grounding/coordinate convention must be re-confirmed when that lands.
 - **Table reconstruction across page breaks** (§10.3) — currently a documented
   limitation.
 - **Equation fidelity** — verify DeepSeek-OCR's LaTeX/math output quality on real
