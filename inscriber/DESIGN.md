@@ -46,10 +46,12 @@ For a given PDF, the output is:
 - Input is a **PDF file path or a URL**; output mirrors `paper2llm`.
 - A **config file** specifies the llama.cpp binary location and model paths;
   **every config value is overridable from the CLI.**
-- **Pluggable OCR backends** behind a stable interface. **v1 ships three**:
-  **DeepSeek-OCR** (the only one with native figure grounding), **PaddleOCR-VL**
-  (1.5), and **GLM-OCR** — the current SOTA trio (§2.4). More (Dots.OCR,
-  HunyuanOCR, …) are addable without touching the pipeline.
+- **Pluggable OCR backends** behind a stable interface. **v1 implements one:
+  DeepSeek-OCR** — the only currently-supported model that locates figures itself
+  in llama.cpp, which the figure→description pipeline requires (§2.4). Other
+  SOTA text-OCR models (GLM-OCR, PaddleOCR-VL, Dots.OCR, …) are **deferred**
+  pending a figure-detection solution (§22.1); the abstraction makes adding them
+  purely additive.
 - Pluggable **VLM backends** for figure description; first target is the
   **Gemma 4** family (Apache-2.0, multimodal, supported by llama.cpp).
 - **Two execution modes** (§3.1): **end-to-end by default** (one command), or a
@@ -173,33 +175,32 @@ So **every** model `inscriber` uses (OCR and VLM) is configured as a
 - Used purely as a **vision→text** describer (image in, prose out). It does not
   need grounding or special prompts beyond the description prompt (§9.3).
 
-### 2.4 The OCR backend trio (and a crucial capability split)
+### 2.4 OCR model landscape and why v1 is DeepSeek-OCR-only
 
-All three are merged into llama.cpp and run via `llama-server`/`llama-mtmd-cli`
-as `(model, mmproj)` pairs. **The decisive difference is whether the model emits
-figure/region bounding boxes itself** — which determines how `inscriber` extracts
-figures (§8.4):
+Several SOTA OCR models are merged into llama.cpp and run via
+`llama-server`/`llama-mtmd-cli` as `(model, mmproj)` pairs. **The decisive
+difference for *this* tool is whether the model locates figures itself** — because
+the whole point of `inscriber` is converting figures into text descriptions, and
+that requires knowing where the figures are.
 
-| backend | llama.cpp PR | text/markdown OCR | **native figure grounding?** | figure strategy in inscriber |
+| backend | llama.cpp PR | text/markdown OCR | **native figure grounding?** | in `inscriber` |
 |---|---|---|---|---|
-| **DeepSeek-OCR** | #17400 | ✅ | ✅ inline `<|ref|>/<|det|>` boxes, 0–999 grid | `grounding` (§8.3) |
-| **PaddleOCR-VL** (1.5, 0.9B) | #18825 | ✅ (markdown/JSON) | ⚠️ **not standalone in llama.cpp** — its layout/detection stage is a *separate Paddle model* (PP-DocLayout) outside llama.cpp | `pdf-embedded` fallback (§8.4) |
-| **GLM-OCR** | #19677 | ✅ | ❌ **text-only by design** — does not predict coordinates; upstream pairs it with PP-DocLayoutV3 (PaddlePaddle) | `pdf-embedded` fallback (§8.4) |
+| **DeepSeek-OCR** | #17400 | ✅ | ✅ inline `<|ref|>/<|det|>` boxes, 0–999 grid | **v1 (default & only)** |
+| **PaddleOCR-VL** (1.5, 0.9B) | #18825 | ✅ (markdown/JSON) | ⚠️ **not in llama.cpp** — layout/detection is a *separate Paddle model* (PP-DocLayout) | **deferred (§22.1)** |
+| **GLM-OCR** | #19677 | ✅ | ❌ **text-only by design** — doesn't predict coordinates; upstream pairs it with PP-DocLayoutV3 | **deferred (§22.1)** |
+| Dots.OCR | #17575 | ✅ | ✅ JSON layout *with* boxes | future grounding-capable backend |
+| HunyuanOCR | #21395 | ✅ | (tbd) | future |
 
-Consequences baked into the design:
-- **DeepSeek-OCR is the only trio member that can crop figures from its own
-  output.** It stays the default OCR backend precisely because the whole
-  figure→VLM story depends on locating figures.
-- For **PaddleOCR-VL / GLM-OCR**, `inscriber` still gets excellent text/markdown,
-  but figure regions come from **PyMuPDF embedded-image extraction** (§8.4),
-  decoupled from OCR. This misses vector/composite figures (a documented
-  limitation); wiring an external Paddle/PP-DocLayout detector is future work
-  (§22).
-- **Per-model prompts and output structure differ and are PR-specific.** Treat
-  each backend's prompt and (for PaddleOCR-VL) JSON-vs-markdown parsing as
-  **capture-and-pin-on-real-output** tasks, exactly like the DeepSeek grounding
-  parser (§8.3 M1 caveat). Dots.OCR (#17575, JSON layout *with* boxes) and
-  HunyuanOCR (#21395) are good future grounding-capable backends.
+**Bottom line: DeepSeek-OCR is the only currently-supported model that delivers
+the full figure→description pipeline standalone in llama.cpp**, so it is the sole
+implemented backend in v1. GLM-OCR and PaddleOCR-VL are excellent at the *text*
+half (SOTA), but in llama.cpp they emit **no figure boxes** — their detection
+stage lives in an external PaddlePaddle model. They would only catch figures via
+a raster-image fallback that **misses the vector figures common in LaTeX papers**
+(matplotlib/TikZ → PDF). Rather than ship a half-working figure path for them,
+**they are deferred until figure detection is solved** — see §22.1, which keeps
+the capability comparison and lists candidate solutions. The `OcrBackend`
+abstraction (§8) is built so adding them later is purely additive.
 
 ---
 
@@ -309,9 +310,8 @@ inscriber/
 │   ├── ocr/
 │   │   ├── base.py             # OcrBackend ABC + shared dataclasses
 │   │   ├── registry.py         # name → backend class
-│   │   ├── deepseek.py         # DeepSeekOcrBackend (grounding, §8.3.1)
-│   │   ├── paddleocr_vl.py     # PaddleOcrVlBackend (§8.3.2)
-│   │   └── glm.py              # GlmOcrBackend (§8.3.3)
+│   │   └── deepseek.py         # DeepSeekOcrBackend (grounding, §8.3)
+│   │   # paddleocr_vl.py / glm.py — deferred (§22.1)
 │   ├── vlm/
 │   │   ├── base.py             # VlmBackend ABC
 │   │   ├── registry.py
@@ -329,7 +329,7 @@ inscriber/
 └── tests/
     ├── fixtures/               # tiny sample PDF + recorded OCR/VLM responses
     ├── test_config.py
-    ├── test_ocr_parsers.py     # per-backend parsing (golden strings, §17)
+    ├── test_deepseek_parser.py # grounding parse + padding (golden, §17)
     ├── test_bundle_roundtrip.py # ocr→describe two-step (§8.5)
     ├── test_splitter.py
     ├── test_stitch.py
@@ -496,15 +496,15 @@ dir or `--workdir`); deleted on **success** unless `--keep-intermediates`, and
 
 Different OCR models emit different grounding/layout formats, need different
 prompts, and may even need a different *number of calls*. The pipeline must not
-know these details. So OCR is hidden behind an interface; **v1 ships three**
-implementations — `DeepSeekOcrBackend`, `PaddleOcrVlBackend`, `GlmOcrBackend`
-(§2.4, §8.3) — and adding Dots.OCR / HunyuanOCR later is "write a new adapter +
-register it", with **zero pipeline changes**. For that promise to actually hold,
-three things below are non-obvious and deliberate: (a) the **backend owns the
-inference call**, not just the prompt/parse; (b) `bbox_norm` is defined against a
-**fixed, explicit frame**; and (c) a backend **declares whether it can ground
-figures** (`supports_grounding`), which the figure step (§8.4) reads to choose
-grounding vs. the PyMuPDF-embedded fallback.
+know these details. So OCR is hidden behind an interface; **v1 implements one
+backend, `DeepSeekOcrBackend`** (§8.3), and the deferred text-OCR models (§22.1)
+and future grounding models (Dots.OCR, …) are "write a new adapter + register
+it", with **zero pipeline changes**. For that promise to actually hold, three
+things below are non-obvious and deliberate: (a) the **backend owns the inference
+call**, not just the prompt/parse; (b) `bbox_norm` is defined against a **fixed,
+explicit frame**; and (c) a backend **declares whether it can ground figures**
+(`supports_grounding`), which the figure step (§8.4) reads to choose grounding
+vs. the (deferred) fallback path.
 
 ### 8.2 The interface (`ocr/base.py`)
 
@@ -562,9 +562,9 @@ correction (§8.3) lives **inside** each backend where it belongs.
 > call is what makes "second backend, zero pipeline changes" true rather than
 > aspirational.
 
-### 8.3 The three v1 backends (`ocr/{deepseek,paddleocr_vl,glm}.py`)
+### 8.3 The v1 backend: `DeepSeekOcrBackend` (`ocr/deepseek.py`)
 
-#### 8.3.1 `DeepSeekOcrBackend` — default, grounding-capable
+(The deferred text-OCR backends and their figure-detection problem are in §22.1.)
 
 - `name = "deepseek-ocr"`; `supports_grounding = True`;
   `forbid_chat_template() = True`; `sampling()` sets `temperature: 0` and a
@@ -608,68 +608,40 @@ correction (§8.3) lives **inside** each backend where it belongs.
 
 > **M1 task (highest risk in the whole design):** capture real DeepSeek-OCR
 > output on 2–3 representative pages, commit them as golden fixtures, pin
-> `test_ocr_parsers.py` to them, and **derive/verify the padding math in
+> `test_deepseek_parser.py` to them, and **derive/verify the padding math in
 > step 3 against the model's reference behavior** (the upstream `run_dpsk_ocr.py`
 > draws boxes on the *padded/processed* image). Treat the token strings and the
 > 0–999 grid as expected-but-unverified until this is done.
 
-#### 8.3.2 `PaddleOcrVlBackend` — text/markdown (+ optional JSON layout)
-
-- `name = "paddleocr-vl"`; `supports_grounding = False` in v1 (see below);
-  model = PaddleOCR-VL-1.5 (0.9B) `(model, mmproj)` pair.
-- `ocr_page` sends the recognition prompt (pin the exact prompt from PR #18825 /
-  the model card during M1) → clean markdown, `regions = []`. PaddleOCR-VL can
-  emit **JSON** for tables/formulas/charts; if a JSON mode is used, parse it in
-  the backend and convert to markdown — this is the canonical "JSON-layout
-  backend" the interface was shaped for (§8.2).
-- **Why no grounding in v1:** figure/region *localization* is a separate
-  **PP-DocLayout** model in the PaddlePaddle library, **not** in llama.cpp
-  (§2.4). Standalone it recognizes content but doesn't reliably return figure
-  boxes, so figures use the `pdf-embedded` fallback (§8.4). Wiring the external
-  detector to flip `supports_grounding = True` is future work (§22).
-
-#### 8.3.3 `GlmOcrBackend` — text-only
-
-- `name = "glm-ocr"`; `supports_grounding = False`; `(model, mmproj)` pair.
-- `ocr_page` sends GLM-OCR's prompt (pin from PR #19677) → clean markdown,
-  `regions = []`.
-- **Text-only by design:** GLM-OCR deliberately does not predict coordinate
-  tokens and upstream pairs it with PP-DocLayoutV3 for detection (§2.4). Figures
-  therefore use the `pdf-embedded` fallback (§8.4).
-
-> **Per-backend M1 task** (same discipline as DeepSeek, §8.3.1): capture each
-> model's real output on fixture pages, pin its prompt, and — for PaddleOCR-VL —
-> pin the JSON-vs-markdown parsing. Don't ship prompts/parsers on assumptions.
+> **M1 figure note:** because DeepSeek-OCR is the only v1 backend and it grounds
+> figures, v1's figure detection is just the grounding path below — no fallback
+> machinery ships in v1.
 
 ### 8.4 Figure detection & cropping (`pdf/figures.py`, `pdf/crop.py`)
 
-**Figure detection is decoupled from OCR** (forced by §2.4: only DeepSeek-OCR
-grounds figures). Config `figure.detect` selects the strategy:
+Figure detection is a **separate step from OCR text** (so future text-only
+backends can plug in a different detector, §22.1). Config `figure.detect`:
 
-- **`auto`** (default) — OCR-backend grounding when `backend.supports_grounding`,
-  else `pdf-embedded`. (DeepSeek → grounding; PaddleOCR-VL / GLM-OCR →
-  pdf-embedded, automatically.)
+- **`auto`** (default) — use OCR-backend grounding when
+  `backend.supports_grounding`. In v1 that means **DeepSeek grounding**.
 - **`grounding`** — force OCR-backend grounding; **error** if the backend can't.
-- **`pdf-embedded`** — ignore OCR regions; use **PyMuPDF** to extract embedded
-  raster images and their page rectangles (`page.get_images()` +
-  `page.get_image_rects()`), mapping each rect → `bbox_norm` (original-page
-  frame). Works with any OCR backend. **Limitation:** catches embedded raster
-  figures, **misses vector/composite figures**; documented, not fixed in v1.
 - **`none`** — no figure detection/description (pure text OCR).
+- **`pdf-embedded`** — *experimental, mainly for the deferred text-only backends
+  (§22.1)*: use **PyMuPDF** to extract embedded raster images + their page rects
+  (`page.get_images()` + `page.get_image_rects()`) → `bbox_norm`. Catches raster
+  figures only, **misses the vector figures common in LaTeX papers** — which is
+  exactly why GLM/Paddle are deferred rather than shipped on this path.
 
-**Placeholder positioning** differs by strategy:
-- *grounding* — placeholder spliced at the figure's real position in the page
-  markdown (§8.3.1 step 4); accurate.
-- *pdf-embedded* — no text anchor, so per-page figure placeholders are appended
-  **after that page's text**, ordered top-to-bottom by rect `y0`. Coarse but
-  honest: the description still travels with the figure, just not perfectly
-  inline.
+**Placeholder positioning:** grounding splices the `⟦INSCRIBER_FIG:{id}⟧`
+placeholder at the figure's real position in the page markdown (§8.3 step 4).
+(For the experimental `pdf-embedded` path there is no text anchor, so per-page
+placeholders are appended after that page's text, ordered by rect `y0`.)
 
-**Cropping** (shared; bboxes already in the original-page `[0,1]` frame, §8.2):
-pixel box = `(x1*W, y1*H, x2*W, y2*H)` against the page image (`W,H` = the
-`PageImage` dims, §7); add a `figure.crop_padding` margin (default 0.02); clamp;
-skip near-zero-area boxes; crop with Pillow; save `figures/fig_p{page}_{i}.png`
-keyed by the placeholder `{id}`.
+**Cropping** (bboxes already in the original-page `[0,1]` frame, §8.2): pixel box
+= `(x1*W, y1*H, x2*W, y2*H)` against the page image (`W,H` = the `PageImage`
+dims, §7); add a `figure.crop_padding` margin (default 0.02); clamp; skip
+near-zero-area boxes; crop with Pillow; save `figures/fig_p{page}_{i}.png` keyed
+by the placeholder `{id}`.
 
 ### 8.5 OCR bundle — the two-step artifact (`bundle.py`)
 
@@ -1126,7 +1098,7 @@ ctx_size = 8192                        # -c
 mode = "sequential"                    # "sequential" | "concurrent"
 
 [ocr]
-backend = "deepseek-ocr"               # deepseek-ocr | paddleocr-vl | glm-ocr
+backend = "deepseek-ocr"               # v1: deepseek-ocr only (others §22.1)
 model = "/models/deepseek-ocr-f16.gguf"
 mmproj = "/models/mmproj-deepseek-ocr-f16.gguf"
 resolution = "large"                   # tiny | small | base | large | gundam
@@ -1142,7 +1114,7 @@ endpoint = ""
 
 [figure]
 enabled = true                         # false = don't detect/describe figures
-detect = "auto"                        # auto | grounding | pdf-embedded | none (§8.4)
+detect = "auto"                        # auto | grounding | none (pdf-embedded: exp., §8.4)
 mode = "describe-only"                 # describe-only (paper2llm default) |
                                        #   describe-and-keep | placeholder
 crop_padding = 0.02                    # fraction of page dims
@@ -1195,13 +1167,13 @@ inscriber describe BUNDLE [vlm-options]# OCR bundle → VLM + assemble + write
       --llama-bin-dir DIR
       --host HOST               llama-server bind host (default 127.0.0.1)
       --port N                  fixed port (default 0 = auto)
-      --ocr-backend NAME        deepseek-ocr | paddleocr-vl | glm-ocr
+      --ocr-backend NAME        v1: deepseek-ocr (others deferred, §22.1)
       --ocr-model PATH
       --ocr-mmproj PATH
       --ocr-resolution MODE     tiny|small|base|large|gundam
       --ocr-ngl N               GPU layers for the OCR server
       --ocr-endpoint URL        use running server; don't spawn
-      --figure-detect MODE      auto|grounding|pdf-embedded|none (§8.4)
+      --figure-detect MODE      auto|grounding|none (pdf-embedded: experimental)
       --no-figures              disable figure detection/description
       --crop-padding FRAC       figure crop margin (fraction of page dims)
 
@@ -1371,11 +1343,11 @@ These are hard requirements, not nice-to-haves:
 The real models need a GPU/large RAM and aren't available in CI, so tests mock
 the inference layer at the **chat-client boundary**.
 
-- **`test_ocr_parsers.py`** — golden-string tests for each backend's parser
-  (§8.3) using **recorded real outputs** as fixtures: DeepSeek grounding
-  (tokens + padding-corrected bboxes), PaddleOCR-VL (markdown / JSON), GLM-OCR
-  (text). Highest-value test; the single-pass grounding design hinges on exact
-  parsing.
+- **`test_deepseek_parser.py`** — golden-string tests for the DeepSeek grounding
+  parser (§8.3) using **recorded real outputs** as fixtures: tokens +
+  padding-corrected bboxes. Highest-value test; the single-pass grounding design
+  hinges on exact parsing. (Per-backend variants land with each deferred backend,
+  §22.1.)
 - **`test_bundle_roundtrip.py`** — `ocr` writes a bundle; `describe` loads it and
   produces the same final output as `run`; a hand-edited page markdown survives;
   a stale/incompatible `inscriber_version` is rejected (§8.5).
@@ -1480,10 +1452,10 @@ llama.cpp over HTTP.
 5. **M3 — Assembly & splitting.** Stitching, the ported light post-processing +
    new cleanup (§10.3), splitter with standalone-file headers (§11), output
    writer (full + splits + figures/).
-6. **M4 — More OCR backends + inputs + BibTeX.** `PaddleOcrVlBackend` and
-   `GlmOcrBackend` (§8.3) with the `pdf-embedded` figure fallback (§8.4); URL
-   input + the 7 domain configs (§6); `--offline`; Semantic Scholar BibTeX with
-   title validation, mock fallback, prepend/fenced injection (§12).
+6. **M4 — Inputs & BibTeX.** URL input + the 7 domain configs (§6), `--offline`,
+   Semantic Scholar BibTeX with title validation, mock fallback, and
+   prepend/fenced injection (§12). (GLM-OCR / PaddleOCR-VL are **not** here —
+   post-v1, gated on figure detection, §22.1.)
 7. **M5 — Hardening.** Cross-platform CI matrix, mocked end-to-end tests,
    `concurrent` mode, docs/README, packaging to PyPI.
 
@@ -1491,13 +1463,52 @@ llama.cpp over HTTP.
 
 ## 22. Open questions / future work
 
-- **External layout detector** for the non-grounding backends — wire
-  PP-DocLayout / PP-DocLayoutV3 (PaddlePaddle) as an optional figure-detection
-  source so PaddleOCR-VL / GLM-OCR can flip `supports_grounding = True` and crop
-  real figure regions instead of relying on the `pdf-embedded` fallback (§8.4).
-  Adds a heavy optional dependency — keep it opt-in.
+### 22.1 Deferred OCR backends: GLM-OCR & PaddleOCR-VL (text-SOTA; figures TBD)
+
+GLM-OCR (#19677) and PaddleOCR-VL-1.5 (#18825) are **SOTA at text/table/equation
+OCR** and would be valuable backends — `inscriber`'s `OcrBackend` abstraction (§8)
+is built to accept them additively (`name`, `ocr_page`, `supports_grounding`,
+prompt/parse). They are **deferred from v1 for one specific reason**: in
+llama.cpp they emit **no figure bounding boxes**, and `inscriber`'s core job is
+turning figures into descriptions.
+
+- **GLM-OCR** is text-only by design (it deliberately doesn't predict
+  coordinate tokens; upstream pairs it with PP-DocLayoutV3).
+- **PaddleOCR-VL** *has* layout detection, but as a **separate PaddlePaddle model
+  (PP-DocLayout), not in llama.cpp** — standalone in llama.cpp it recognizes
+  content without reliable figure localization.
+
+So the blocker is **figure detection**, and shipping them means picking a
+solution (all TBD; each is a tradeoff):
+
+1. **External layout model (PP-DocLayout / PP-DocLayoutV3).** Highest fidelity,
+   matches upstream usage; lets the backend set `supports_grounding = True`.
+   Cost: heavy optional PaddlePaddle dependency, extra model to manage, more
+   integration — keep strictly opt-in.
+2. **PyMuPDF vector-aware detection.** Cluster the PDF's vector drawings
+   (`page.get_drawings()` / `cluster_drawings()`) **plus** raster image rects to
+   infer figure regions. No extra model/dependency, fully local. Cost: heuristic
+   — risks catching tables/equations/rules or splitting composite figures; needs
+   tuning and validation.
+3. **`pdf-embedded` raster fallback only** (the experimental path, §8.4). Cheap
+   and already specified, but **misses the vector figures common in LaTeX
+   papers** — acceptable only for raster-heavy/scanned PDFs, not as the general
+   answer.
+4. **Prefer a grounding-capable model instead.** If the goal is "another backend
+   besides DeepSeek," **Dots.OCR** (#17575) emits JSON layout *with* boxes and
+   may be a better next target than retrofitting detection onto GLM/Paddle.
+
+**Recommendation when this is picked up:** treat GLM-OCR/PaddleOCR-VL as
+**text-OCR backends** first (figure detection via option 1 or 2), pin each
+model's prompt and output format on real captured output (same M1 discipline as
+DeepSeek, §8.3), and decide whether `pdf-embedded` is an acceptable interim
+default for them or whether figures should simply be `none` until a real detector
+is wired.
+
+### 22.2 Other future work
+
 - **More grounding-capable OCR backends** — Dots.OCR (#17575, JSON layout *with*
-  boxes) and HunyuanOCR (#21395); Dots.OCR is the natural next grounding backend.
+  boxes; natural next backend) and HunyuanOCR (#21395).
 - **Table reconstruction across page breaks** (§10.3) — currently a documented
   limitation.
 - **Equation fidelity** — verify DeepSeek-OCR's LaTeX/math output quality on real
