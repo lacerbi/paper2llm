@@ -96,10 +96,13 @@ llama.cpp exposes multimodal (vision) inference two ways, both relevant here:
 > ("number of bitmaps (1) does not match number of markers (0)"), while
 > `llama-mtmd-cli` processes the *same* model correctly. **M1a (§21) must gate on
 > proving a base64 image round-trips through `/v1/chat/completions` on the pinned
-> llama.cpp build.** If it is still broken on the target build, the
-> `DeepSeekOcrBackend` falls back to driving `llama-mtmd-cli` (one-shot,
-> accept the reload cost) — which is why the backend, not the orchestrator, owns
-> the inference call (§8.2).
+> llama.cpp build.** If it is still broken on the target build, fall back to
+> driving `llama-mtmd-cli` (one-shot, accept the reload cost). Because that
+> fallback is **not HTTP**, the inference path is abstracted behind an
+> `Inferencer` (HTTP-server impl + mtmd-cli-subprocess impl, §8.2) that backends
+> call — the server `ChatClient` is just one `Inferencer`. The VLM image path
+> (Gemma 4 base64 over `/v1/chat/completions`) is a *separate, lower-risk*
+> round-trip and gets its own M1a confirmation.
 
 A multimodal model in llama.cpp is **two files**:
 
@@ -111,31 +114,41 @@ A multimodal model in llama.cpp is **two files**:
 So **every** model `inscriber` uses (OCR and VLM) is configured as a
 `(model_gguf, mmproj_gguf)` pair.
 
-### 2.2 DeepSeek-OCR (first OCR backend)
+### 2.2 DeepSeek-OCR (the v1 OCR backend)
 
 - Support was **merged into llama.cpp `master`** via PR #17400 (merged
-  2026-03-25). It is no longer a feature branch.
-- Requires a `deepseek-ocr` model GGUF + `mmproj-deepseek-ocr` projector GGUF.
-  Reference GGUFs live in the `ggml-org/DeepSeek-OCR-GGUF` Hugging Face
+  2026-03-25). Requires a `deepseek-ocr` model GGUF + `mmproj-deepseek-ocr`
+  projector GGUF; reference GGUFs live in the `ggml-org/DeepSeek-OCR-GGUF` HF
   collection.
+- **Version note:** a successor, **`deepseek-ai/DeepSeek-OCR-2`** (2026), exists
+  on Hugging Face. Whether the pinned llama.cpp build's PR #17400 path targets
+  the original or v2 — and whether v2 needs a different mmproj/prompt — is an
+  **M1 verification item**. Same model family and grounding scheme either way;
+  v1 targets whichever DeepSeek-OCR version the build supports.
 - **Quirks (must be respected):**
-  - Use **f16** weights for the model/projector. **Q4_K_M quantization causes
-    runaway repetition loops on some prompts** — the upstream model relies on an
-    n-gram repetition penalty that llama.cpp does not implement, so quantized
-    weights loop. Default to f16; allow override. **Even at f16**, guard every
-    OCR request with a hard `max_tokens` cap, a per-request wall-clock timeout,
-    and llama.cpp repetition-penalty flags (§5.3, §8); treat a truncated/looping
-    page as a soft failure (§16), or a single bad page hangs the whole pass.
-  - Drive OCR **deterministically**: send `temperature: 0` (and a fixed seed) on
-    OCR requests. Sampling params are part of the cache key (§8.6).
-  - **Do NOT pass `--chat-template deepseek-ocr`** to the **server**. Reason:
-    that flag is an `llama-mtmd-cli`-side concern; `llama-server` applies the
-    model's built-in template, and forcing the flag corrupts output. (Don't
-    "fix" this later by adding it.)
-  - The model is **prompt-driven**. Known working prompts: `OCR`,
-    `OCR markdown`, and `<|grounding|>OCR` — OCR **with layout grounding**
-    (bounding boxes for detected regions). **`inscriber` uses
-    `<|grounding|>OCR`** (see §8).
+  - Use **f16** weights. **Q4_K_M causes runaway repetition loops** because the
+    upstream model uses an **n-gram repetition penalty (ngram_size≈30,
+    window≈90)** that llama.cpp **does not implement**. There is no exact
+    equivalent flag: llama.cpp's `--repeat-penalty`/`--repeat-last-n` are
+    token-level (not n-gram), and the DRY sampler (`--dry-multiplier`) is the
+    closest analog — offer these via `server_flags()` as a *partial mitigation*,
+    but the **real guards are f16 + a hard `max_tokens` cap + a per-request
+    wall-clock timeout + soft-failure** on a looping/truncated page (§5.3, §16).
+  - Drive OCR **deterministically**: `temperature: 0` + fixed seed (part of the
+    cache key, §8.6).
+  - **Chat template is path-dependent.** With **`llama-server`**, do **not** pass
+    `--chat-template deepseek-ocr` — the server applies the model's built-in
+    template. With the **`llama-mtmd-cli` fallback** (§2.1), the template flag
+    *is* used (the upstream examples pass `--chat-template deepseek-ocr --temp 0`
+    to mtmd-cli). So the template choice is **per-path** — see `chat_template(path)`
+    in §8.2, not a flat bool. M1 should confirm the server path's behavior.
+  - **Prompt.** The documented, recommended grounding prompt is
+    **`<|grounding|>Convert the document to markdown.`** — upstream calls it the
+    most complete/accurate mode and the only one that reliably handles
+    multi-column layouts. (`<|grounding|>OCR` was also reported working in the
+    llama.cpp guide; `OCR` / `OCR markdown` are plain non-grounding prompts.)
+    **`inscriber` defaults to `<|grounding|>Convert the document to markdown.`**;
+    pin the exact string on real output in M1 (§8.3).
   - **Resolution modes.** DeepSeek-OCR's documented native modes are
     **Tiny (512px)**, **Small (640px)**, **Base (1024px)**, **Large (1280px)**,
     plus a dynamic tiling mode informally called **"Gundam"** (multiple ~640px
@@ -149,23 +162,22 @@ So **every** model `inscriber` uses (OCR and VLM) is configured as a
     (coords may be relative to the 1024 global view, not the tiles).
 
 > ⚠️ **Implementation note on the grounding format.** DeepSeek-OCR's grounding
-> output is expected to follow the DeepSeek-VL grounding convention:
-> region references wrapped as
-> `<|ref|>LABEL<|/ref|><|det|>[[x1, y1, x2, y2]]<|/det|>`, with coordinates
-> normalized to a **0–999** grid relative to the input image. The first task in
-> implementation (§8.3, Milestone M1) is to **run the model on a real page and
-> capture the exact output** to lock the parser. Treat the token strings above
-> as the expected-but-unverified format.
-
-> **Naming:** there is **no "DeepSeek-OCR-2"** as of June 2026 — the
-> llama.cpp-supported model is **DeepSeek-OCR** (PR #17400). ("DeepSeek V4" is a
-> separate general-purpose LLM, not an OCR model.) If a v2 ships later, it would
-> be a new backend version, not a rename here.
+> output follows the DeepSeek-VL convention: region references wrapped as
+> `<|ref|>LABEL<|/ref|><|det|>[[x1, y1, x2, y2]]<|/det|>`, coordinates on a
+> **0–999** grid. **The coordinate *frame* is an open M1 question, not settled:**
+> reference implementations scale each axis independently by the **original
+> image** dimensions (`px = coord/999 * W`, `py = coord/999 * H`, no padding
+> subtraction), yet some docs describe the grid as relative to the **padded
+> 1024² input** the encoder sees. These disagree on non-square pages. M1 must
+> **determine it empirically** (feed an image with a figure at a known location,
+> read the emitted coords, pick the mapping that reproduces the box) — see §8.3.
+> Default to the reference behavior (original-image, no padding) until proven
+> otherwise.
 
 ### 2.3 Gemma 4 (first VLM backend)
 
 - Released April 2026, **Apache-2.0** licensed. Variants: `E2B`, `E4B`
-  (multimodal, efficient), plus a larger `26B-A4B` MoE and `31B` dense.
+  (multimodal, efficient), `12B`, a `26B-A4B` MoE, and `31B` dense.
 - The `E2B`/`E4B` variants are supported as multimodal models in llama.cpp and
   are the recommended figure-description models for `inscriber` (small, fast,
   permissively licensed). Larger variants work if the user has the hardware.
@@ -223,7 +235,7 @@ abstraction (§8) is built so adding them later is purely additive.
 │  4. Figure crop        (bboxes → cropped figure PNGs)        [§8.4]          │
 │  5. VLM pass           (each figure crop + context → <img_desc>) [§9]        │
 │        └─ via VlmBackend (GemmaVlmBackend) over a managed llama-server       │
-│  6. Assemble + clean   (stitch pages, strip headers, inject descriptions)[§10│
+│  6. Assemble + clean   (stitch pages, strip headers, inject descriptions)[§10]│
 │  7. Split              (main / appendix / backmatter)        [§11]           │
 │  8. BibTeX (optional, online)                               [§12]           │
 │  9. Write outputs                                           [§14]           │
@@ -231,7 +243,7 @@ abstraction (§8) is built so adding them later is purely additive.
         │                               │
         ▼                               ▼
   LlamaServerManager              OcrCache (disk)
-  (spawn/health/teardown) [§5]    (per-page OCR memoization) [§9.5/§8.6]
+  (spawn/health/teardown) [§5]    (per-page OCR memoization) [§8.6]
 ```
 
 **Key design decision — sequential, single-model-resident inference.** OCR and
@@ -428,11 +440,21 @@ Input is one positional argument: a **local PDF path** or an **http(s) URL**.
     by `createAllRepositoryHandlers()` in `index.ts`. There is **no**
     `domain-handler-registry.ts`. URLs not matching any config are simply **not
     handled** (no catch-all).
-  - It ships **seven** repository configs — port all of them:
-    **arXiv, OpenReview, ACL Anthology, bioRxiv, medRxiv, NeurIPS/NIPS, MLR Press
-    (PMLR)** (`generic-handler.ts`). Example: arXiv `…/abs/1234.5678` →
-    `…/pdf/1234.5678`. **Special case: OpenReview** must preserve the `?id=…`
-    query param when transforming to the PDF URL — a plain path rewrite breaks it.
+  - It ships **seven** repository configs — port all of them (pin each transform
+    as a fixture, don't reverse-engineer):
+    - **arXiv** `…/abs/{id}` → `…/pdf/{id}`
+    - **bioRxiv / medRxiv** (identical rule) `…/content/(10.1101/{id})(vN)?…` →
+      `…/content/{id}{vN}.full.pdf`
+    - **NeurIPS/NIPS** `…/hash/{x}-Abstract.html` → `…/file/{x}-Paper.pdf`
+    - **MLR Press (PMLR)** `…/vN/{id}` → `…/vN/{id}/{id}.pdf`
+    - **ACL Anthology** — append `.pdf`
+    - **OpenReview** — see special case below.
+  - **OpenReview special case:** handled by a **host-level branch in
+    `normalizePdfUrl` *before* the generic transform rules** — it sets the path to
+    `/pdf` while `URL.toString()` preserves the `?id=…` query (a plain path rewrite
+    that dropped the query would break it). Its **filename** also reads
+    `?id=` → `openreview-{id}.pdf` (fallback `openreview-paper.pdf`). Port the
+    host-level branch, not just a per-rule replacement.
   - The Python shape can stay a small interface (method names are a free
     re-spelling of paper2llm's `canHandle` / `normalizePdfUrl` / `getFileName`):
     ```python
@@ -525,35 +547,45 @@ class OcrPageResult:
                                # by ⟦INSCRIBER_FIG:{id}⟧ placeholders (§8.3)
     regions: list[Region]      # all detected regions (figures, tables, etc.)
 
+class Inferencer(Protocol):
+    """One multimodal (image+prompt → text) call. Two implementations:
+       - HttpInferencer  → llama-server /v1/chat/completions (base64 image)
+       - MtmdCliInferencer → one-shot `llama-mtmd-cli` subprocess (fallback, §2.1)
+       Backends depend on this, NOT on an HTTP client directly, so the mtmd-cli
+       fallback is implementable without changing any signatures."""
+    def infer(self, image: PageImage, prompt: str, *, sampling: dict,
+              chat_template: str | None, max_tokens: int, timeout_s: float) -> str: ...
+
 class OcrBackend(ABC):
     name: str                  # registry key, e.g. "deepseek-ocr"
 
     @abstractmethod
-    def ocr_page(self, client: ChatClient, image: PageImage,
+    def ocr_page(self, inf: Inferencer, image: PageImage,
                  mode: ResolutionMode) -> OcrPageResult: ...
-    """Own the WHOLE inference for one page: build prompt(s), call the model
-       (possibly more than once, or expecting JSON layout), and return clean
-       markdown + regions in the original-page frame. Single-call grounding
-       backends (DeepSeek) and multi-call / JSON-layout backends (Dots.OCR,
-       PaddleOCR-VL) both fit because the backend, not the orchestrator, drives
-       the calls."""
+    """Own the WHOLE inference for one page: build prompt(s), call `inf` (possibly
+       more than once, or expecting JSON layout), and return clean markdown +
+       regions in the original-page frame. Single-call grounding backends
+       (DeepSeek) and multi-call / JSON-layout backends both fit."""
 
     # capability: can this model locate figures from its own output?
     supports_grounding: bool = False   # DeepSeek-OCR → True; GLM/Paddle → False
 
-    # server requirements the backend imposes
-    def server_flags(self) -> list[str]: return []      # e.g. repetition penalty
-    def forbid_chat_template(self) -> bool: return False # DeepSeek-OCR → True
+    def server_flags(self) -> list[str]: return []      # e.g. DRY/repeat-penalty
     def sampling(self) -> dict: return {"temperature": 0}  # OCR determinism
+    # chat template is PATH-AWARE (§2.2): the value (or None) to use on the
+    # llama-server path vs the mtmd-cli path — they differ for DeepSeek-OCR.
+    def chat_template(self, path: Literal["server", "mtmd-cli"]) -> str | None:
+        return None
 ```
 
 When `supports_grounding` is `False`, `ocr_page` returns `regions = []` (text
-only) and figure detection is delegated to the PyMuPDF-embedded fallback (§8.4).
+only) and figure detection falls to the experimental PyMuPDF-embedded path
+(§8.4) — relevant only to the deferred backends (§22.1), not v1.
 
-The orchestrator, per page, simply calls `backend.ocr_page(client, image, mode)`
-and gets an `OcrPageResult` whose bboxes are already in the original-page `[0,1]`
-frame — so cropping (§8.4) is genuinely model-agnostic and the padding/tiling
-correction (§8.3) lives **inside** each backend where it belongs.
+The orchestrator, per page, calls `backend.ocr_page(inf, image, mode)` and gets
+an `OcrPageResult` whose bboxes are already in the original-page `[0,1]` frame —
+so cropping (§8.4) is genuinely model-agnostic and the coordinate-frame mapping
+(§8.3) lives **inside** each backend where it belongs.
 
 > Why not the old `prompt()` + orchestrator-owned `client.describe()` + `parse()`
 > split? Because it bakes in "exactly one text-returning call per page," which
@@ -566,32 +598,32 @@ correction (§8.3) lives **inside** each backend where it belongs.
 
 (The deferred text-OCR backends and their figure-detection problem are in §22.1.)
 
-- `name = "deepseek-ocr"`; `supports_grounding = True`;
-  `forbid_chat_template() = True`; `sampling()` sets `temperature: 0` and a
-  `max_tokens` cap (§2.2).
-- Prompt: `"<|grounding|>OCR"` (grounding always on; we want the figure boxes). A
-  non-grounding prompt (`"OCR markdown"`) is used when figure extraction is
-  disabled (`figure.enabled = false`, §13).
+- `name = "deepseek-ocr"`; `supports_grounding = True`; `sampling()` sets
+  `temperature: 0` + fixed seed and a `max_tokens` cap; `chat_template()` is
+  path-aware (None on server; `"deepseek-ocr"` on the mtmd-cli fallback) (§2.2).
+- Prompt: `"<|grounding|>Convert the document to markdown."` (§2.2; grounding on,
+  for the figure boxes). When figures are disabled (`figure.detect = none`, §13),
+  use the plain `"Convert the document to markdown."` prompt.
 - **`ocr_page` algorithm** (single grounding call → clean text **and** boxes;
   this is the "exact parsing, single pass" decision):
-  1. Call the model once with the grounding prompt.
+  1. Call `inf` once with the grounding prompt.
   2. Find all grounding spans via regex, **expected**:
      `<\|ref\|>(?P<label>.*?)<\|/ref\|><\|det\|>\[\[(?P<coords>[\d,\s]+)\]\]<\|/det\|>`
      (coords on a **0–999** grid — see the M1 caveat below).
-  3. **Convert coordinates into the original-page `[0,1]` frame, undoing the
-     model's aspect-ratio padding.** This is mandatory and easy to get wrong:
-     for Base/Large modes DeepSeek-OCR **pads the page to a square** (e.g. 1024²)
-     before inference, so the 0–999 grid is relative to the *padded square*, not
-     the page. A naive `coord/999 * page_dimension` mis-places every box on any
-     non-square page (i.e. all A4/Letter). Correct mapping:
-     - let the page have long edge `L_px` and short edge `S_px` (from §7);
-     - the model squared it to `L_px × L_px` with the short axis padded by
-       `pad = (L_px − S_px) / 2` (symmetric);
-     - `px = coord/999 * L_px`; subtract `pad` on the **short axis**; then divide
-       by `S_px` (short axis) / `L_px` (long axis) to get `[0,1]` of the page.
-     For **Gundam**, confirm in M1 whether coords are relative to the 1024 global
-     view or to tiles, and convert accordingly. **Encapsulate all of this in the
-     backend** so `bbox_norm` is always original-page-relative (§8.2).
+  3. **Convert coordinates into the original-page `[0,1]` frame.** The simple,
+     reference-implementation mapping is **per-axis against the original image,
+     no padding subtraction**: `bbox_norm = (x1/999, y1/999, x2/999, y2/999)`
+     (i.e. pixels `px = coord/999 * W`, `py = coord/999 * H`). **Default to this.**
+     ⚠️ **But the frame is an open M1 question** (§2.2): some docs describe the
+     0–999 grid as relative to the **padded 1024² encoder input**, which on a
+     non-square page would instead require scaling by the long edge and
+     subtracting `pad = (L_px − S_px)/2` on the short axis. M1 must **determine
+     empirically** which is correct — render a page with a figure at a known
+     location, read the emitted coords, and keep whichever mapping reproduces the
+     box — and lock it in a golden test. For **Gundam**, also confirm whether
+     coords are relative to the 1024 global view or the tiles. **Whatever the
+     answer, encapsulate it in the backend** so `bbox_norm` is always
+     original-page-relative (§8.2).
   4. **Build clean markdown by *replacing* each grounding span, not blindly
      deleting it.** ⚠️ Critical: for **figure-class** regions (`label` ∈
      {figure, image, picture, chart, diagram, plot}), replace the span **in
@@ -608,14 +640,11 @@ correction (§8.3) lives **inside** each backend where it belongs.
 
 > **M1 task (highest risk in the whole design):** capture real DeepSeek-OCR
 > output on 2–3 representative pages, commit them as golden fixtures, pin
-> `test_deepseek_parser.py` to them, and **derive/verify the padding math in
-> step 3 against the model's reference behavior** (the upstream `run_dpsk_ocr.py`
-> draws boxes on the *padded/processed* image). Treat the token strings and the
-> 0–999 grid as expected-but-unverified until this is done.
-
-> **M1 figure note:** because DeepSeek-OCR is the only v1 backend and it grounds
-> figures, v1's figure detection is just the grounding path below — no fallback
-> machinery ships in v1.
+> `test_deepseek_parser.py` to them, and **determine the coordinate frame
+> empirically** (step 3 / §2.2): verify whether `coord/999` maps against the
+> original image (reference default) or the padded square, by checking which
+> reproduces a known box. Treat the token strings, prompt, and frame as
+> expected-but-unverified until this is done.
 
 ### 8.4 Figure detection & cropping (`pdf/figures.py`, `pdf/crop.py`)
 
@@ -625,12 +654,16 @@ backends can plug in a different detector, §22.1). Config `figure.detect`:
 - **`auto`** (default) — use OCR-backend grounding when
   `backend.supports_grounding`. In v1 that means **DeepSeek grounding**.
 - **`grounding`** — force OCR-backend grounding; **error** if the backend can't.
-- **`none`** — no figure detection/description (pure text OCR).
+- **`none`** — no figure detection/description (pure text OCR). `--no-figures`
+  is an alias for `figure.detect = none` (there is no separate `enabled` flag —
+  one knob, no redundancy).
 - **`pdf-embedded`** — *experimental, mainly for the deferred text-only backends
   (§22.1)*: use **PyMuPDF** to extract embedded raster images + their page rects
   (`page.get_images()` + `page.get_image_rects()`) → `bbox_norm`. Catches raster
   figures only, **misses the vector figures common in LaTeX papers** — which is
-  exactly why GLM/Paddle are deferred rather than shipped on this path.
+  exactly why GLM/Paddle are deferred rather than shipped on this path. It ships
+  in v1 only as an **experimental escape hatch** (it's just PyMuPDF; the test in
+  §17 covers it); `auto` never selects it while DeepSeek grounds.
 
 **Placeholder positioning:** grounding splices the `⟦INSCRIBER_FIG:{id}⟧`
 placeholder at the figure's real position in the page markdown (§8.3 step 4).
@@ -660,7 +693,8 @@ OUT/paper.inscriber-ocr/
 
 ```jsonc
 {
-  "inscriber_version": "0.1.0",
+  "bundle_schema": 1,                 // integer; the compatibility gate (see below)
+  "inscriber_version": "0.1.0",       // informational only
   "created_at": "2026-06-09T...Z",
   "source": { "name": "paper", "source": "url",
               "original_url": "https://arxiv.org/abs/...",
@@ -668,16 +702,17 @@ OUT/paper.inscriber-ocr/
   "ocr": { "backend": "deepseek-ocr",
            "model_identity": "...", "mmproj_identity": "...",
            "resolution": "large", "render_long_edge_px": 1280,
-           "prompt": "<|grounding|>OCR", "sampling": {"temperature": 0} },
+           "prompt": "<|grounding|>Convert the document to markdown.",
+           "sampling": {"temperature": 0} },
   "figure_detect": "grounding",
   "pages": [
     { "page_number": 3,
       "markdown": "## 3. Method\n...\n⟦INSCRIBER_FIG:fig_p3_1⟧\n...",
       "regions": [ { "label": "figure",
-                     "bbox_norm": [0.0, 0.24, 1.0, 0.61],
+                     "bbox_norm": [0.10, 0.24, 0.88, 0.61],
                      "text": "Figure 1: ..." } ],
       "figures": [ { "id": "fig_p3_1", "page": 3,
-                     "bbox_norm": [0.0,0.24,1.0,0.61],
+                     "bbox_norm": [0.10,0.24,0.88,0.61],
                      "crop_path": "figures/fig_p3_1.png",
                      "caption": "Figure 1: ..." } ] }
   ]
@@ -685,17 +720,30 @@ OUT/paper.inscriber-ocr/
 ```
 
 Notes:
-- The bundle is **the OCR cache content materialized as a user artifact** — both
-  serialize the same `OcrPageResult` (§8.6). `run` is `ocr`→`describe` in one
-  process and need not write a bundle.
+- **Bundle vs. cache (they are NOT the same serialization).** The OCR **cache**
+  (§8.6) stores the *pre-crop* `OcrPageResult` (markdown + regions) at the OCR
+  boundary. The **bundle** is a *superset*: per page it adds the post-crop
+  `figures[]` (id, `crop_path`, caption) and the cropped PNGs on disk. So:
+  cache = step-3 boundary; bundle = step-4 boundary. `run` threads in-memory
+  objects, consults the cache, and skips bundle I/O entirely.
 - `manifest.json` is **human-editable**: fix an OCR glitch in a page's `markdown`
   (keeping the `⟦INSCRIBER_FIG⟧` placeholders) once, then run `describe` with N
   different VLMs.
-- `describe` validates the bundle (schema + that every referenced `crop_path`
-  exists) and **ignores all OCR/`[ocr]` config** — only `[vlm]`, `[figure].mode`,
-  `[output]`, `[bibtex]` apply at that stage.
-- Versioning: `describe` checks `inscriber_version` compatibility and refuses a
-  bundle whose schema it doesn't understand (clear error, not silent misparse).
+- **`bundle_schema` versioning:** `describe` accepts `bundle_schema <= SUPPORTED`
+  and **refuses a higher value** with a clear error (never silently misparse).
+  `inscriber_version` is informational and is **not** the gate (it churns every
+  release). The §17 round-trip test asserts on `bundle_schema`.
+- **What config `describe` honors** (it has no PDF and no OCR model):
+  - **Applies:** `[vlm].*`, `[figure].mode`, `[figure].context_chars`,
+    `[output].*`, `[bibtex].*`, `[net].offline`, and `[llama].*` + `[inference]`
+    (it still launches a VLM server).
+  - **Ignores (baked into the bundle at `ocr` time):** all `[ocr].*`,
+    `[figure].detect`, `[figure].crop_padding`.
+  - `figure.detect = none` / `--no-figures` at describe time **skips description**
+    of bundled figures (leaves the figure out, or as a bare image ref if
+    `describe-and-keep` — define as: drop the description, keep nothing).
+  - **Output base name** comes from `manifest.source.name` (no PDF to derive from).
+- `describe` also validates that every referenced `crop_path` exists.
 
 ### 8.6 OCR cache (`cache.py`)
 
@@ -713,9 +761,16 @@ Per-page OCR is the expensive step; cache it.
     path+size+mtime so it's computed once). Keying on bare `mtime` is fragile:
     a re-download/copy that preserves content but changes mtime busts the cache
     spuriously, and `touch` without change wouldn't. Hash the content.
-- **Value:** serialized `OcrPageResult` (JSON; bboxes + markdown, placeholders
-  included) **plus** the raw model output (for debugging).
-- **Location:** `platformdirs.user_cache_dir("inscriber")/ocr/`.
+- **Value:** the **pre-crop** `OcrPageResult` (JSON; markdown with placeholders +
+  regions) **plus** raw model output (debugging) and a `value_schema` integer so
+  a future backend's richer result can't collide with a v1 entry. **No crops are
+  stored** — cropping is recomputed each run from `figure.crop_padding` (which is
+  therefore *not* in the OCR key); the VLM cache's `figure_crop_hash` (§9.6) is
+  what protects correctness when crops change.
+- **Location:** `platformdirs.user_cache_dir("inscriber")/ocr/`. **Written
+  per-page as each page completes** (not batched at the end), so an interrupted
+  `run`/`ocr` resumes from the last completed page. The VLM cache (§9.6) is
+  likewise written per-figure.
 - On a re-run that changes only VLM settings, the entire OCR pass is served from
   cache → the OCR server is never even launched.
 - **`--refresh`** ignores existing entries, recomputes, and **overwrites** them.
@@ -841,11 +896,12 @@ is an optional future refinement, but the default must reproduce paper2llm's
 whole-page behavior.
 
 Two precision notes for the implementer:
-- In paper2llm the preamble's page number is derived from the image id
-  (`image.id.split("-")[0]`, `"unknown"` if absent), **not** a true page number.
-  inscriber's ids are `fig_p{page}_{i}` (§8.3), so use the real page number `N`
-  directly — do **not** port the `.split("-")[0]` literally (it would yield the
-  whole id).
+- **The preamble page number is a paper2llm *bug* — inscriber fixes it.** paper2llm
+  does `image.id.split("-")[0]`, but the Mistral image id is like `img-0.jpeg`, so
+  this yields `"img"` (or `"unknown"`), **never** a real page number — its preamble
+  is effectively always "This image appears on page img." inscriber has the real
+  page, so use `N` directly (correcting, not reproducing, the behavior). Do **not**
+  port `.split("-")[0]`.
 - paper2llm does **not** extract captions separately for context — context is
   purely the whole-page text, and any caption is included only because it lives
   in that text. (`Region.text` from §8.3 feeds the `{caption_or_label}` in
@@ -916,6 +972,10 @@ Config `figure.mode` (mirrors paper2llm's `MarkdownOptions`):
   ```
 - **`placeholder`** (`replaceImagesWithPlaceholder`): emit
   `> **Image.** [not displayed]` (note: `Image.`, not `Image description.`).
+
+Match paper2llm's trailing newline exactly: each emitted block ends with a single
+`\n` (`markdown-processor.ts:312/:315/:329`) so `ensureImageDescriptionSpacing`
+(§10.3) behaves identically.
 
 > Do **not** leave raw `<img_desc>` tags in the output — they are an internal
 > protocol with the VLM, not part of the document.
@@ -1033,11 +1093,16 @@ network access** and is therefore **opt-in** (`--bibtex` / config
   `{firstAuthorLastName}{year}{firstSubstantiveTitleWord}` (skip-words list in
   `bibtex-generator.ts`). Note Semantic Scholar is **rate-limited** for
   unauthenticated use — degrade gracefully on 429.
-- **No result / API error → mock fallback** (don't just drop it): paper2llm
-  synthesizes a placeholder entry (`@article{unknownYear, …}`) prefixed with
-  `% WARNING: This is a fallback mock citation.` and signals failure to callers
-  by returning **`bibtex === ""`** (empty string) — this empty-string sentinel is
-  what drives the retry path. Port both the mock entry and the sentinel.
+- **No result / API error → mock fallback** (don't just drop it). ⚠️ Source
+  precision: `bibtex-generator.ts`'s own `generateMockBibTeXEntry` is **discarded**
+  — `generateBibTeXFromTitle` returns **`bibtex === ""`** (empty string) on
+  failure, and that sentinel is what drives the include/retry path. The
+  user-visible mock — the literal `@article{unknownYear, …, author={Unknown
+  Author}, journal={Unknown Journal}, …}` prefixed with `% WARNING: This is a
+  fallback mock citation.` — is assembled in **`content-utils.ts`**
+  (`getContentWithOptionalBibtex`), **not** in `bibtex-generator.ts`. **Port the
+  `content-utils` mock text and the empty-string sentinel** (not the discarded
+  generator mock).
 - **Title validation:** compare document title vs. returned title under a
   normalized (lowercased, punctuation-stripped) comparison
   (`BibTeXTitleValidation`). On mismatch, still emit the entry but prepend
@@ -1048,6 +1113,10 @@ network access** and is therefore **opt-in** (`--bibtex` / config
   % Citation title: "{bibtex_title}"
   % 
   ```
+  (paper2llm also has a slightly different mismatch wording —
+  `% WARNING: The paper title does not match the citation title.` — inside the
+  *mock* branch; inscriber **standardizes on the one 4-line form above** for both
+  paths, intentionally.)
 - **Placement** (`content-utils.ts` `getContentWithOptionalBibtex`):
   - write a standalone `paper.bib` (default); **and/or**
   - **inject the entry into the document** (`bibtex.append_to_document`). ⚠️
@@ -1113,12 +1182,12 @@ n_gpu_layers = 0                       # -ngl for the VLM server (per-server)
 endpoint = ""
 
 [figure]
-enabled = true                         # false = don't detect/describe figures
-detect = "auto"                        # auto | grounding | none (pdf-embedded: exp., §8.4)
+detect = "auto"                        # auto | grounding | none | pdf-embedded(exp.)
+                                       #   none = no figures (--no-figures alias)
 mode = "describe-only"                 # describe-only (paper2llm default) |
                                        #   describe-and-keep | placeholder
-crop_padding = 0.02                    # fraction of page dims
-context_chars = 2000                   # whole-page context truncation cap (§9.5)
+crop_padding = 0.02                    # fraction of page dims (ocr-stage)
+context_chars = 2000                   # whole-page context truncation cap (describe-stage, §9.5)
 
 [output]
 dir = "."                              # output directory
@@ -1161,20 +1230,25 @@ inscriber describe BUNDLE [vlm-options]# OCR bundle → VLM + assemble + write
   BUNDLE                        path to a *.inscriber-ocr dir   (describe)
   -c, --config PATH             config file (default: platform config dir)
   -o, --output-dir DIR          output directory (default: cwd)
-      --pages RANGE             1-indexed inclusive, e.g. "1-10","3","5-","all" (run, ocr)
+      --pages RANGE             1-indexed inclusive, e.g. "1-10","3","5-","-12","all" (run, ocr)
 
-  # --- OCR stage (run, ocr) ---
+  # --- shared inference (run, ocr, describe — all launch a server) ---
       --llama-bin-dir DIR
       --host HOST               llama-server bind host (default 127.0.0.1)
       --port N                  fixed port (default 0 = auto)
+      --ctx N                   context size
+      --server-timeout SEC      seconds to wait for /health
+      --mode {sequential,concurrent}   (run only; ocr/describe use one server)
+
+  # --- OCR stage (run, ocr) ---
       --ocr-backend NAME        v1: deepseek-ocr (others deferred, §22.1)
       --ocr-model PATH
       --ocr-mmproj PATH
       --ocr-resolution MODE     tiny|small|base|large|gundam
       --ocr-ngl N               GPU layers for the OCR server
       --ocr-endpoint URL        use running server; don't spawn
-      --figure-detect MODE      auto|grounding|none (pdf-embedded: experimental)
-      --no-figures              disable figure detection/description
+      --figure-detect MODE      auto|grounding|none|pdf-embedded(exp.)
+      --no-figures              alias for --figure-detect none
       --crop-padding FRAC       figure crop margin (fraction of page dims)
 
   # --- VLM / describe stage (run, describe) ---
@@ -1186,15 +1260,12 @@ inscriber describe BUNDLE [vlm-options]# OCR bundle → VLM + assemble + write
       --figure-mode {describe-only,describe-and-keep,placeholder}
       --context-chars N         whole-page context truncation cap
 
-  # --- shared inference (run, ocr, describe) ---
-      --ctx N                   context size
-      --mode {sequential,concurrent}   (run only)
-
   # --- output / assembly (run, describe) ---
       --no-split                write only the full document
       --page-numbers            insert "#### Page N" before each page
       --page-separators         insert "---" between pages
       --no-clean                skip header/footer + de-hyphenation cleanup
+      --no-normalize-breaks     skip blank-line collapsing
       --no-clobber              error instead of overwriting existing outputs
       --bibtex                  fetch BibTeX (requires network)
       --bibtex-in-doc           also inject the BibTeX entry into the document
@@ -1209,13 +1280,13 @@ inscriber describe BUNDLE [vlm-options]# OCR bundle → VLM + assemble + write
       --version
 ```
 
-> **`--no-figures` semantics** differ from paper2llm and the doc must be explicit:
+> **`--no-figures` (= `--figure-detect none`) semantics** differ from paper2llm:
 > here it means "don't detect or describe figures at all" (no crops, no VLM
-> server, figure regions are just stripped from the markdown). paper2llm has no
-> true off switch — when its vision model is "None" it still routes through
+> server, figure regions stripped from the markdown). paper2llm has no true off
+> switch — with vision model "None" it still routes through
 > `replaceImagesWithPlaceholder` and emits `> **Image.** [not displayed]` for
-> every detected image. To reproduce *that* behavior, use
-> `--figure-mode placeholder` (detect + placeholder), not `--no-figures`.
+> every detected image. To reproduce *that*, use `--figure-mode placeholder`
+> (detect + placeholder), not `--no-figures`.
 
 ### 13.3 Config ↔ CLI mapping (the "every field is overridable" contract)
 
@@ -1224,17 +1295,18 @@ inscriber describe BUNDLE [vlm-options]# OCR bundle → VLM + assemble + write
 | `llama.bin_dir` | `--llama-bin-dir` |
 | `llama.host` / `llama.port` | `--host` / `--port` |
 | `llama.ctx_size` | `--ctx` |
+| `llama.server_start_timeout` | `--server-timeout` |
 | `ocr.backend` / `ocr.model` / `ocr.mmproj` | `--ocr-backend` / `--ocr-model` / `--ocr-mmproj` |
 | `ocr.resolution` / `ocr.n_gpu_layers` / `ocr.endpoint` | `--ocr-resolution` / `--ocr-ngl` / `--ocr-endpoint` |
 | `vlm.*` | `--vlm-backend` / `--vlm-model` / `--vlm-mmproj` / `--vlm-ngl` / `--vlm-endpoint` |
-| `inference.mode` | `--mode` |
-| `figure.enabled` | `--no-figures` (sets false) |
-| `figure.detect` | `--figure-detect` |
+| `inference.mode` | `--mode` (run only) |
+| `figure.detect` | `--figure-detect` (`--no-figures` ⇒ `none`) |
 | `figure.mode` | `--figure-mode` |
 | `figure.crop_padding` / `figure.context_chars` | `--crop-padding` / `--context-chars` |
 | `output.dir` | `-o/--output-dir` |
 | `output.split` | `--no-split` (sets false) |
 | `output.page_numbers` / `output.page_separators` | `--page-numbers` / `--page-separators` |
+| `output.normalize_line_breaks` | `--no-normalize-breaks` (sets false) |
 | `output.clean` | `--no-clean` (sets false) |
 | `output.clobber` | `--no-clobber` (sets false) |
 | `cache.enabled` / `cache.refresh` | `--no-cache` / `--refresh` |
@@ -1243,10 +1315,10 @@ inscriber describe BUNDLE [vlm-options]# OCR bundle → VLM + assemble + write
 | `net.offline` | `--offline` |
 | (page range — inscriber-only, §7) | `--pages` |
 
-`server_start_timeout` and `normalize_line_breaks` are config-only in v1
-(rarely changed); if the "every field overridable" promise is to be literal, add
-`--server-timeout` / `--no-normalize-breaks`. Either decide they're config-only
-and soften the §1.2 wording, or add the flags — don't leave the contradiction.
+Every config field now has a CLI override (the §1.2 promise holds literally);
+`--server-timeout` and `--no-normalize-breaks` were added for that reason.
+`[figure]` straddles stages: `detect`/`crop_padding` are **ocr-stage** (baked
+into the bundle), `mode`/`context_chars` are **describe-stage** (§8.5).
 
 ---
 
@@ -1266,13 +1338,15 @@ OUT/
     └── ...
 ```
 
-- Base name: the PDF filename **stem** (`Path(...).stem`), or the domain
-  handler's `file_name(url)` for URL inputs. Sanitize so a source literally named
-  `paper.main.pdf` can't collide with the `paper.main.md` split output.
+- Base name: for `run`/`ocr`, the PDF filename **stem** (`Path(...).stem`) or the
+  domain handler's `file_name(url)`; for `describe`, `manifest.source.name`
+  (no PDF present, §8.5). Sanitize so a source literally named `paper.main.pdf`
+  can't collide with the `paper.main.md` split output.
 - `paper.md` is the **full** document (the enhanced, stitched markdown).
-  `figures/` is written when `figure.mode = describe-and-keep` (the only mode
-  that references the crops); other modes don't emit it unless
-  `--keep-intermediates` is set.
+- **Two distinct `figures/` dirs:** the **bundle** always has one (crops are made
+  at `ocr` time, before `mode` is chosen — §8.5); the **output** dir gets one only
+  when `figure.mode = describe-and-keep` (the only mode that references crops),
+  else only under `--keep-intermediates`.
 - All files written **UTF-8 explicitly**, with `\n` newlines (don't let Windows
   inject `\r\n`).
 - Default overwrites existing outputs (`output.clobber = true`), logging each
@@ -1344,13 +1418,14 @@ The real models need a GPU/large RAM and aren't available in CI, so tests mock
 the inference layer at the **chat-client boundary**.
 
 - **`test_deepseek_parser.py`** — golden-string tests for the DeepSeek grounding
-  parser (§8.3) using **recorded real outputs** as fixtures: tokens +
-  padding-corrected bboxes. Highest-value test; the single-pass grounding design
-  hinges on exact parsing. (Per-backend variants land with each deferred backend,
-  §22.1.)
+  parser (§8.3) using **recorded real outputs** as fixtures: tokens + the
+  M1-confirmed coordinate-frame mapping. Highest-value test; the single-pass
+  grounding design hinges on exact parsing. (Per-backend variants land with each
+  deferred backend, §22.1.)
 - **`test_bundle_roundtrip.py`** — `ocr` writes a bundle; `describe` loads it and
-  produces the same final output as `run`; a hand-edited page markdown survives;
-  a stale/incompatible `inscriber_version` is rejected (§8.5).
+  produces output consistent with `run` (same base name from `manifest.source.name`,
+  §8.5); a hand-edited page markdown survives; a `bundle_schema` higher than
+  supported is rejected (§8.5).
 - **`test_pdf_embedded_figures.py`** — `figure.detect = pdf-embedded` on a fixture
   PDF with an embedded raster figure yields a crop + appended placeholder (§8.4).
 - **`test_splitter.py`** — section-detection on a battery of synthetic markdown
@@ -1432,17 +1507,18 @@ llama.cpp over HTTP.
 1. **M0 — Skeleton.** Project layout, `pyproject.toml`, CLI argparse →
    `RunConfig`, TOML config load/merge/validate, logging. `inscriber --version`
    and config errors work.
-2. **M1a — De-risk spike (do this first).** `LlamaServerManager`
-   (spawn/health/teardown) + chat client + PyMuPDF rasterize, then **the two
+2. **M1a — De-risk spike (do this first).** `Inferencer` (HTTP impl +
+   mtmd-cli impl, §8.2) + `LlamaServerManager` + PyMuPDF rasterize, then **the two
    highest-risk unknowns**: (i) prove a base64 image round-trips through
    DeepSeek-OCR on `/v1/chat/completions` for the pinned llama.cpp build, *or*
-   fall back to `llama-mtmd-cli` (§2.1 C-note); (ii) **capture real grounding
-   output** to `tests/fixtures/` and confirm the token format **and the
-   coordinate/padding frame** (§8.3). Nothing else can be trusted until this
-   lands.
+   fall back to `llama-mtmd-cli` (§2.1); (ii) **capture real grounding output** to
+   `tests/fixtures/` and **determine the coordinate frame empirically** (§8.3 step
+   3 / §2.2). Nothing else can be trusted until this lands.
 3. **M1b — OCR vertical slice.** `DeepSeekOcrBackend.ocr_page` with the parser +
-   padding-correction **locked to the M1a fixtures**, the OCR cache, and
-   per-page markdown (with `⟦INSCRIBER_FIG⟧` placeholders) for a real PDF.
+   coordinate mapping **locked to the M1a fixtures**, the OCR cache, and per-page
+   markdown (with `⟦INSCRIBER_FIG⟧` placeholders) for a real PDF. **Design the
+   `OcrPageResult` (de)serialization once here** — it's reused by both the cache
+   (M1b) and the bundle (M2), so don't pick a format the bundle must later migrate.
 4. **M2 — Figures + two-step split.** Figure detection (§8.4: grounding for
    DeepSeek), cropping, VLM server + `GemmaVlmBackend`, prompt + extraction,
    whole-page context, blockquote injection (§10.2), VLM cache. **Land the
@@ -1562,7 +1638,7 @@ implementation. Paths are relative to `paper2llm-web/src/`.
 | 13 | **Combined "allparts"** with `# {title} - Appendix/Backmatter` headers | ✅ | §11 | `web/components/markdown-preview/utils/content-utils.ts` → `getSectionContent` |
 | 14 | **BibTeX** generation (Semantic Scholar) | ✅ (online, opt-in) | §12 | `core/utils/bibtex-generator.ts` |
 | 15 | BibTeX **title validation** + `% WARNING` mismatch comment | ✅ | §12 | `bibtex-generator.ts`, `content-utils.ts`, `BibTeXTitleValidation` in `types/interfaces.ts` |
-| 15b | BibTeX **mock fallback** entry + empty-string failure sentinel | ✅ | §12 | `bibtex-generator.ts`, `content-utils.ts` |
+| 15b | BibTeX **mock fallback** entry (mock text in `content-utils`) + empty-string failure sentinel (`bibtex-generator`) | ✅ | §12 | `content-utils.ts` (mock text), `bibtex-generator.ts:515` (`""` sentinel) |
 | 16 | **Inject BibTeX into document** — *prepended*, fenced code block, `---` separator | ✅ | §12 | `content-utils.ts:195` → `getContentWithOptionalBibtex` |
 | 17 | BibTeX retry on demand | ⤳ Reclassified | §12 | UI affordance (`useCopyDownload.ts` `retryBibtexGeneration`); no CLI analog — re-run with `--bibtex` |
 | 18 | Output **filename** derived from source (PDF name / URL handler) | ✅ | §14 | `useCopyDownload.ts`, domain handlers |
@@ -1573,7 +1649,7 @@ implementation. Paths are relative to `paper2llm-web/src/`.
 
 **`MarkdownOptions` flag accounting** (all 8): `addPageNumbers`,
 `addPageSeparators` (§10.1); `normalizeLineBreaks` (§10.3a); `processImages`
-(→ `figure.enabled`/`--no-figures`, with the placeholder caveat in §13.2);
+(→ `figure.detect = none` / `--no-figures`, with the placeholder caveat in §13.2);
 `keepOriginalImages`, `replaceImagesWithPlaceholder` (→ `figure.mode`, §10.2);
 `debugMode` (→ `-v`/`--keep-intermediates`). **`extractImageReferences`** only
 populates a bookkeeping `imageReferences[]` list for UI use — **dropped** as
@@ -1612,8 +1688,9 @@ figure. This is the canonical example the M1a fixtures should capture.
 `zoom = 1280/842 ≈ 1.52`, producing `PageImage(page_number=3, png, W=905, H=1280)`.
 
 **2. OCR call (§8.3).** `DeepSeekOcrBackend.ocr_page` sends the page PNG with
-prompt `<|grounding|>OCR`, `temperature: 0`, `max_tokens` capped. Raw output
-(illustrative, to be replaced by a real M1a fixture):
+prompt `<|grounding|>Convert the document to markdown.`, `temperature: 0`,
+`max_tokens` capped. Raw output (illustrative, to be replaced by a real M1a
+fixture):
 
 ```
 ## 3. Method
@@ -1625,14 +1702,15 @@ We train the model as shown below.
 Figure 1: Training pipeline overview.
 ```
 
-**3. Parse + frame-correct (§8.3).** One figure span, coords `[101,240,880,612]`
-on the 0–999 grid of the **padded 1280² square**. Undo padding on the short axis
-(`pad = (1280−905)/2 = 187.5`):
-`x_px = [101,880]/999*1280 = [129, 1127]`, minus pad → `[−58, 940]` clamped to
-`[0, 905]`; `y_px = [240,612]/999*1280 = [307, 784]`. Normalize to the original
-page → `bbox_norm ≈ (0.0, 0.24, 1.0, 0.61)`. The figure span is **replaced** by a
-placeholder (not deleted); `Region.text = "Figure 1: Training pipeline overview."`
-Resulting `OcrPageResult.markdown`:
+**3. Parse + map coords (§8.3).** One figure span, coords `[101,240,880,612]` on
+the 0–999 grid. Using the **default reference mapping** (per-axis against the
+original image, no padding): `bbox_norm = (101/999, 240/999, 880/999, 612/999) ≈
+(0.10, 0.24, 0.88, 0.61)` (pixels `x=[91,797]`, `y=[307,784]` against
+`W=905,H=1280`). *(If M1 instead confirms the padded-square frame, this becomes
+≈(0.0,0.24,1.0,0.61) — which is exactly why M1 must pin it empirically, §2.2.)*
+The figure span is **replaced** by a placeholder (not deleted);
+`Region.text = "Figure 1: Training pipeline overview."` Resulting
+`OcrPageResult.markdown`:
 
 ```
 ## 3. Method
