@@ -46,11 +46,16 @@ For a given PDF, the output is:
 - Input is a **PDF file path or a URL**; output mirrors `paper2llm`.
 - A **config file** specifies the llama.cpp binary location and model paths;
   **every config value is overridable from the CLI.**
-- **Pluggable OCR backends** behind a stable interface; **DeepSeek-OCR** is the
-  first implemented adapter, with others (Dots.OCR, PaddleOCR-VL, GLM-OCR,
-  HunyuanOCR) addable later without touching the pipeline.
+- **Pluggable OCR backends** behind a stable interface. **v1 ships three**:
+  **DeepSeek-OCR** (the only one with native figure grounding), **PaddleOCR-VL**
+  (1.5), and **GLM-OCR** — the current SOTA trio (§2.4). More (Dots.OCR,
+  HunyuanOCR, …) are addable without touching the pipeline.
 - Pluggable **VLM backends** for figure description; first target is the
   **Gemma 4** family (Apache-2.0, multimodal, supported by llama.cpp).
+- **Two execution modes** (§3.1): **end-to-end by default** (one command), or a
+  **two-step `ocr` → `describe`** flow that materializes an inspectable *OCR
+  bundle* (§8.6) so you can run/compare different VLMs on the **same OCR + figure
+  crops** without re-running OCR.
 
 ### 1.3 Non-goals (v1)
 
@@ -120,7 +125,7 @@ So **every** model `inscriber` uses (OCR and VLM) is configured as a
     and llama.cpp repetition-penalty flags (§5.3, §8); treat a truncated/looping
     page as a soft failure (§16), or a single bad page hangs the whole pass.
   - Drive OCR **deterministically**: send `temperature: 0` (and a fixed seed) on
-    OCR requests. Sampling params are part of the cache key (§8.5).
+    OCR requests. Sampling params are part of the cache key (§8.6).
   - **Do NOT pass `--chat-template deepseek-ocr`** to the **server**. Reason:
     that flag is an `llama-mtmd-cli`-side concern; `llama-server` applies the
     model's built-in template, and forcing the flag corrupts output. (Don't
@@ -150,6 +155,11 @@ So **every** model `inscriber` uses (OCR and VLM) is configured as a
 > capture the exact output** to lock the parser. Treat the token strings above
 > as the expected-but-unverified format.
 
+> **Naming:** there is **no "DeepSeek-OCR-2"** as of June 2026 — the
+> llama.cpp-supported model is **DeepSeek-OCR** (PR #17400). ("DeepSeek V4" is a
+> separate general-purpose LLM, not an OCR model.) If a v2 ships later, it would
+> be a new backend version, not a rename here.
+
 ### 2.3 Gemma 4 (first VLM backend)
 
 - Released April 2026, **Apache-2.0** licensed. Variants: `E2B`, `E4B`
@@ -162,6 +172,34 @@ So **every** model `inscriber` uses (OCR and VLM) is configured as a
   quant suffixes (e.g. unsloth `gemma-4-E4B-it-GGUF`).
 - Used purely as a **vision→text** describer (image in, prose out). It does not
   need grounding or special prompts beyond the description prompt (§9.3).
+
+### 2.4 The OCR backend trio (and a crucial capability split)
+
+All three are merged into llama.cpp and run via `llama-server`/`llama-mtmd-cli`
+as `(model, mmproj)` pairs. **The decisive difference is whether the model emits
+figure/region bounding boxes itself** — which determines how `inscriber` extracts
+figures (§8.4):
+
+| backend | llama.cpp PR | text/markdown OCR | **native figure grounding?** | figure strategy in inscriber |
+|---|---|---|---|---|
+| **DeepSeek-OCR** | #17400 | ✅ | ✅ inline `<|ref|>/<|det|>` boxes, 0–999 grid | `grounding` (§8.3) |
+| **PaddleOCR-VL** (1.5, 0.9B) | #18825 | ✅ (markdown/JSON) | ⚠️ **not standalone in llama.cpp** — its layout/detection stage is a *separate Paddle model* (PP-DocLayout) outside llama.cpp | `pdf-embedded` fallback (§8.4) |
+| **GLM-OCR** | #19677 | ✅ | ❌ **text-only by design** — does not predict coordinates; upstream pairs it with PP-DocLayoutV3 (PaddlePaddle) | `pdf-embedded` fallback (§8.4) |
+
+Consequences baked into the design:
+- **DeepSeek-OCR is the only trio member that can crop figures from its own
+  output.** It stays the default OCR backend precisely because the whole
+  figure→VLM story depends on locating figures.
+- For **PaddleOCR-VL / GLM-OCR**, `inscriber` still gets excellent text/markdown,
+  but figure regions come from **PyMuPDF embedded-image extraction** (§8.4),
+  decoupled from OCR. This misses vector/composite figures (a documented
+  limitation); wiring an external Paddle/PP-DocLayout detector is future work
+  (§22).
+- **Per-model prompts and output structure differ and are PR-specific.** Treat
+  each backend's prompt and (for PaddleOCR-VL) JSON-vs-markdown parsing as
+  **capture-and-pin-on-real-output** tasks, exactly like the DeepSeek grounding
+  parser (§8.3 M1 caveat). Dots.OCR (#17575, JSON layout *with* boxes) and
+  HunyuanOCR (#21395) are good future grounding-capable backends.
 
 ---
 
@@ -192,7 +230,7 @@ So **every** model `inscriber` uses (OCR and VLM) is configured as a
         │                               │
         ▼                               ▼
   LlamaServerManager              OcrCache (disk)
-  (spawn/health/teardown) [§5]    (per-page OCR memoization) [§9.5/§8.5]
+  (spawn/health/teardown) [§5]    (per-page OCR memoization) [§9.5/§8.6]
 ```
 
 **Key design decision — sequential, single-model-resident inference.** OCR and
@@ -202,9 +240,39 @@ server down, **then** brings up the VLM server for the entire figure pass. A
 power user with plenty of memory can opt into keeping both up concurrently
 (§5.4), but sequential is the default.
 
-The OCR cache (§8.5) makes this design especially valuable: re-running with
+The OCR cache (§8.6) makes this design especially valuable: re-running with
 different VLM settings reuses cached OCR and skips the expensive OCR pass
 entirely.
+
+### 3.1 Execution modes: end-to-end vs. two-step
+
+The pipeline above is **end-to-end by default**, but it cleanly factors at the
+OCR/VLM boundary (the OCR pass is independent of which VLM describes the figures).
+`inscriber` exposes that boundary as three subcommands (§13.2):
+
+- **`inscriber run INPUT`** (default; `inscriber INPUT` is shorthand) — the full
+  pipeline, OCR through write, in one process.
+- **`inscriber ocr INPUT`** — steps 1–4 only (resolve → rasterize → OCR → figure
+  crop), then **write an *OCR bundle*** (§8.6) and stop. No VLM is loaded.
+- **`inscriber describe BUNDLE`** — steps 5–9 (VLM description → assemble → split
+  → BibTeX → write), reading a previously produced OCR bundle. No OCR is loaded.
+
+**Why this is more than the cache.** The OCR cache (§8.6) is an internal,
+content-addressed optimization for `run`. The OCR bundle is a **portable,
+inspectable, user-facing artifact**. The motivating use case — *test/compare
+several VLMs on the identical document and figure crops* — is then just:
+
+```
+inscriber ocr paper.pdf -o out/                       # once
+inscriber describe out/paper.inscriber-ocr --vlm-model gemma-4-e4b.gguf  ...
+inscriber describe out/paper.inscriber-ocr --vlm-model qwen3-vl.gguf     ...
+```
+
+Each `describe` reuses the same OCR text and the same cropped figure PNGs, so
+differences are attributable purely to the VLM. As a bonus, the bundle's per-page
+markdown is **hand-editable** before `describe` (fix an OCR glitch once, then try
+N VLMs). `run` is semantically `ocr` immediately followed by `describe`, sharing
+the same serialization (§8.6).
 
 ---
 
@@ -227,12 +295,13 @@ inscriber/
 │   ├── cli.py                  # argparse, wires CLI→RunConfig→pipeline
 │   ├── config.py               # TOML load/merge/validate → RunConfig
 │   ├── models.py               # dataclasses: Region, Figure, OcrPage, etc.
-│   ├── pipeline.py             # orchestrator (the 9 steps above)
+│   ├── pipeline.py             # orchestrator: run / ocr / describe (§3.1)
 │   ├── input/
 │   │   ├── resolver.py         # PDF path or URL → local bytes
-│   │   └── domain_handlers.py  # arXiv/OpenReview/bioRxiv URL normalization
+│   │   └── domain_handlers.py  # 7 config-driven repo handlers (§6)
 │   ├── pdf/
 │   │   ├── rasterize.py        # PyMuPDF: PDF → page images, page count
+│   │   ├── figures.py          # figure-detection strategies (§8.4)
 │   │   └── crop.py             # crop figure regions from page images
 │   ├── llama/
 │   │   ├── server.py           # LlamaServerManager (spawn/health/teardown)
@@ -240,7 +309,9 @@ inscriber/
 │   ├── ocr/
 │   │   ├── base.py             # OcrBackend ABC + shared dataclasses
 │   │   ├── registry.py         # name → backend class
-│   │   └── deepseek.py         # DeepSeekOcrBackend (prompt + grounding parser)
+│   │   ├── deepseek.py         # DeepSeekOcrBackend (grounding, §8.3.1)
+│   │   ├── paddleocr_vl.py     # PaddleOcrVlBackend (§8.3.2)
+│   │   └── glm.py              # GlmOcrBackend (§8.3.3)
 │   ├── vlm/
 │   │   ├── base.py             # VlmBackend ABC
 │   │   ├── registry.py
@@ -251,13 +322,15 @@ inscriber/
 │   │   └── prompt.py           # figure-description prompt template + extractor
 │   ├── bibtex/
 │   │   └── semantic_scholar.py # optional online BibTeX (title→entry)
+│   ├── bundle.py               # OCR bundle read/write (two-step, §8.5)
 │   ├── cache.py                # OcrCache: content-addressed per-page store
 │   ├── output.py               # writes full + splits + bibtex + figures/
 │   └── logging.py              # progress + structured logging
 └── tests/
     ├── fixtures/               # tiny sample PDF + recorded OCR/VLM responses
     ├── test_config.py
-    ├── test_deepseek_parser.py # grounding-format parsing (golden strings)
+    ├── test_ocr_parsers.py     # per-backend parsing (golden strings, §17)
+    ├── test_bundle_roundtrip.py # ocr→describe two-step (§8.5)
     ├── test_splitter.py
     ├── test_stitch.py
     ├── test_pipeline_mocked.py # full pipeline with mocked servers
@@ -334,7 +407,7 @@ Config `inference.mode`:
   constraint is **VRAM**, not just RAM: each server gets its own `-ngl`, so allow
   an independent GPU-layer setting per server rather than a single global value.
   Even in `concurrent` mode, **consult the OCR cache before launching the OCR
-  server** (§8.5) — a fully-cached document needs no OCR server at all. There is
+  server** (§8.6) — a fully-cached document needs no OCR server at all. There is
   no automatic "do both models fit?" detection in v1; it is the user's
   responsibility, documented as a VRAM caveat.
 
@@ -423,12 +496,15 @@ dir or `--workdir`); deleted on **success** unless `--keep-intermediates`, and
 
 Different OCR models emit different grounding/layout formats, need different
 prompts, and may even need a different *number of calls*. The pipeline must not
-know these details. So OCR is hidden behind an interface; v1 ships **one**
-implementation (DeepSeek-OCR) but adding Dots.OCR / PaddleOCR-VL / GLM-OCR /
-HunyuanOCR later is "write a new adapter + register it", with **zero pipeline
-changes**. For that promise to actually hold, two things below are non-obvious
-and deliberate: (a) the **backend owns the inference call**, not just the
-prompt/parse, and (b) `bbox_norm` is defined against a **fixed, explicit frame**.
+know these details. So OCR is hidden behind an interface; **v1 ships three**
+implementations — `DeepSeekOcrBackend`, `PaddleOcrVlBackend`, `GlmOcrBackend`
+(§2.4, §8.3) — and adding Dots.OCR / HunyuanOCR later is "write a new adapter +
+register it", with **zero pipeline changes**. For that promise to actually hold,
+three things below are non-obvious and deliberate: (a) the **backend owns the
+inference call**, not just the prompt/parse; (b) `bbox_norm` is defined against a
+**fixed, explicit frame**; and (c) a backend **declares whether it can ground
+figures** (`supports_grounding`), which the figure step (§8.4) reads to choose
+grounding vs. the PyMuPDF-embedded fallback.
 
 ### 8.2 The interface (`ocr/base.py`)
 
@@ -462,11 +538,17 @@ class OcrBackend(ABC):
        PaddleOCR-VL) both fit because the backend, not the orchestrator, drives
        the calls."""
 
+    # capability: can this model locate figures from its own output?
+    supports_grounding: bool = False   # DeepSeek-OCR → True; GLM/Paddle → False
+
     # server requirements the backend imposes
     def server_flags(self) -> list[str]: return []      # e.g. repetition penalty
     def forbid_chat_template(self) -> bool: return False # DeepSeek-OCR → True
     def sampling(self) -> dict: return {"temperature": 0}  # OCR determinism
 ```
+
+When `supports_grounding` is `False`, `ocr_page` returns `regions = []` (text
+only) and figure detection is delegated to the PyMuPDF-embedded fallback (§8.4).
 
 The orchestrator, per page, simply calls `backend.ocr_page(client, image, mode)`
 and gets an `OcrPageResult` whose bboxes are already in the original-page `[0,1]`
@@ -480,10 +562,13 @@ correction (§8.3) lives **inside** each backend where it belongs.
 > call is what makes "second backend, zero pipeline changes" true rather than
 > aspirational.
 
-### 8.3 `DeepSeekOcrBackend` (`ocr/deepseek.py`)
+### 8.3 The three v1 backends (`ocr/{deepseek,paddleocr_vl,glm}.py`)
 
-- `name = "deepseek-ocr"`; `forbid_chat_template() = True`; `sampling()` sets
-  `temperature: 0` and a `max_tokens` cap (§2.2).
+#### 8.3.1 `DeepSeekOcrBackend` — default, grounding-capable
+
+- `name = "deepseek-ocr"`; `supports_grounding = True`;
+  `forbid_chat_template() = True`; `sampling()` sets `temperature: 0` and a
+  `max_tokens` cap (§2.2).
 - Prompt: `"<|grounding|>OCR"` (grounding always on; we want the figure boxes). A
   non-grounding prompt (`"OCR markdown"`) is used when figure extraction is
   disabled (`figure.enabled = false`, §13).
@@ -523,25 +608,124 @@ correction (§8.3) lives **inside** each backend where it belongs.
 
 > **M1 task (highest risk in the whole design):** capture real DeepSeek-OCR
 > output on 2–3 representative pages, commit them as golden fixtures, pin
-> `test_deepseek_parser.py` to them, and **derive/verify the padding math in
+> `test_ocr_parsers.py` to them, and **derive/verify the padding math in
 > step 3 against the model's reference behavior** (the upstream `run_dpsk_ocr.py`
 > draws boxes on the *padded/processed* image). Treat the token strings and the
 > 0–999 grid as expected-but-unverified until this is done.
 
-### 8.4 Figure cropping (`pdf/crop.py`)
+#### 8.3.2 `PaddleOcrVlBackend` — text/markdown (+ optional JSON layout)
 
-By the time cropping runs, every figure `Region.bbox_norm` is already in the
-**original-page `[0,1]` frame** (the backend did the padding/tiling correction,
-§8.3). So cropping is trivial and model-agnostic:
+- `name = "paddleocr-vl"`; `supports_grounding = False` in v1 (see below);
+  model = PaddleOCR-VL-1.5 (0.9B) `(model, mmproj)` pair.
+- `ocr_page` sends the recognition prompt (pin the exact prompt from PR #18825 /
+  the model card during M1) → clean markdown, `regions = []`. PaddleOCR-VL can
+  emit **JSON** for tables/formulas/charts; if a JSON mode is used, parse it in
+  the backend and convert to markdown — this is the canonical "JSON-layout
+  backend" the interface was shaped for (§8.2).
+- **Why no grounding in v1:** figure/region *localization* is a separate
+  **PP-DocLayout** model in the PaddlePaddle library, **not** in llama.cpp
+  (§2.4). Standalone it recognizes content but doesn't reliably return figure
+  boxes, so figures use the `pdf-embedded` fallback (§8.4). Wiring the external
+  detector to flip `supports_grounding = True` is future work (§22).
 
-- pixel box = `(x1*W, y1*H, x2*W, y2*H)` against the page's rendered image
-  (`W,H` = the `PageImage` dims from §7);
-- add a margin of `figure.crop_padding` (fraction of page dims, default 0.02);
-- clamp to image bounds; skip degenerate (near-zero-area) boxes;
-- crop with Pillow, save `figures/fig_p{page}_{i}.png`, attach the path to the
-  figure record (keyed by the same `{id}` used in the placeholder, §8.3).
+#### 8.3.3 `GlmOcrBackend` — text-only
 
-### 8.5 OCR cache (`cache.py`)
+- `name = "glm-ocr"`; `supports_grounding = False`; `(model, mmproj)` pair.
+- `ocr_page` sends GLM-OCR's prompt (pin from PR #19677) → clean markdown,
+  `regions = []`.
+- **Text-only by design:** GLM-OCR deliberately does not predict coordinate
+  tokens and upstream pairs it with PP-DocLayoutV3 for detection (§2.4). Figures
+  therefore use the `pdf-embedded` fallback (§8.4).
+
+> **Per-backend M1 task** (same discipline as DeepSeek, §8.3.1): capture each
+> model's real output on fixture pages, pin its prompt, and — for PaddleOCR-VL —
+> pin the JSON-vs-markdown parsing. Don't ship prompts/parsers on assumptions.
+
+### 8.4 Figure detection & cropping (`pdf/figures.py`, `pdf/crop.py`)
+
+**Figure detection is decoupled from OCR** (forced by §2.4: only DeepSeek-OCR
+grounds figures). Config `figure.detect` selects the strategy:
+
+- **`auto`** (default) — OCR-backend grounding when `backend.supports_grounding`,
+  else `pdf-embedded`. (DeepSeek → grounding; PaddleOCR-VL / GLM-OCR →
+  pdf-embedded, automatically.)
+- **`grounding`** — force OCR-backend grounding; **error** if the backend can't.
+- **`pdf-embedded`** — ignore OCR regions; use **PyMuPDF** to extract embedded
+  raster images and their page rectangles (`page.get_images()` +
+  `page.get_image_rects()`), mapping each rect → `bbox_norm` (original-page
+  frame). Works with any OCR backend. **Limitation:** catches embedded raster
+  figures, **misses vector/composite figures**; documented, not fixed in v1.
+- **`none`** — no figure detection/description (pure text OCR).
+
+**Placeholder positioning** differs by strategy:
+- *grounding* — placeholder spliced at the figure's real position in the page
+  markdown (§8.3.1 step 4); accurate.
+- *pdf-embedded* — no text anchor, so per-page figure placeholders are appended
+  **after that page's text**, ordered top-to-bottom by rect `y0`. Coarse but
+  honest: the description still travels with the figure, just not perfectly
+  inline.
+
+**Cropping** (shared; bboxes already in the original-page `[0,1]` frame, §8.2):
+pixel box = `(x1*W, y1*H, x2*W, y2*H)` against the page image (`W,H` = the
+`PageImage` dims, §7); add a `figure.crop_padding` margin (default 0.02); clamp;
+skip near-zero-area boxes; crop with Pillow; save `figures/fig_p{page}_{i}.png`
+keyed by the placeholder `{id}`.
+
+### 8.5 OCR bundle — the two-step artifact (`bundle.py`)
+
+The OCR bundle is the **portable, inspectable output of `inscriber ocr`** and the
+**input to `inscriber describe`** (§3.1). It contains everything needed to run
+the VLM/assembly stages later, with **no OCR model required**. A directory:
+
+```
+OUT/paper.inscriber-ocr/
+├── manifest.json     # source meta + OCR config + per-page results
+├── figures/          # cropped figure PNGs (fig_p{page}_{i}.png)
+└── pages/            # optional page rasters (kept if --keep-intermediates)
+```
+
+`manifest.json`:
+
+```jsonc
+{
+  "inscriber_version": "0.1.0",
+  "created_at": "2026-06-09T...Z",
+  "source": { "name": "paper", "source": "url",
+              "original_url": "https://arxiv.org/abs/...",
+              "pdf_sha256": "..." },
+  "ocr": { "backend": "deepseek-ocr",
+           "model_identity": "...", "mmproj_identity": "...",
+           "resolution": "large", "render_long_edge_px": 1280,
+           "prompt": "<|grounding|>OCR", "sampling": {"temperature": 0} },
+  "figure_detect": "grounding",
+  "pages": [
+    { "page_number": 3,
+      "markdown": "## 3. Method\n...\n⟦INSCRIBER_FIG:fig_p3_1⟧\n...",
+      "regions": [ { "label": "figure",
+                     "bbox_norm": [0.0, 0.24, 1.0, 0.61],
+                     "text": "Figure 1: ..." } ],
+      "figures": [ { "id": "fig_p3_1", "page": 3,
+                     "bbox_norm": [0.0,0.24,1.0,0.61],
+                     "crop_path": "figures/fig_p3_1.png",
+                     "caption": "Figure 1: ..." } ] }
+  ]
+}
+```
+
+Notes:
+- The bundle is **the OCR cache content materialized as a user artifact** — both
+  serialize the same `OcrPageResult` (§8.6). `run` is `ocr`→`describe` in one
+  process and need not write a bundle.
+- `manifest.json` is **human-editable**: fix an OCR glitch in a page's `markdown`
+  (keeping the `⟦INSCRIBER_FIG⟧` placeholders) once, then run `describe` with N
+  different VLMs.
+- `describe` validates the bundle (schema + that every referenced `crop_path`
+  exists) and **ignores all OCR/`[ocr]` config** — only `[vlm]`, `[figure].mode`,
+  `[output]`, `[bibtex]` apply at that stage.
+- Versioning: `describe` checks `inscriber_version` compatibility and refuses a
+  bundle whose schema it doesn't understand (clear error, not silent misparse).
+
+### 8.6 OCR cache (`cache.py`)
 
 Per-page OCR is the expensive step; cache it.
 
@@ -697,7 +881,7 @@ Two precision notes for the implementer:
 
 ### 9.6 VLM caching
 
-Same scheme as §8.5, keyed on `(figure_crop_hash, vlm_backend_name,
+Same scheme as §8.6, keyed on `(figure_crop_hash, vlm_backend_name,
 vlm_model_identity, vlm_mmproj_identity, full_assembled_prompt, sampling_params)`.
 The key uses the **fully assembled prompt — context text included** — not just a
 template name; otherwise changing `context_chars` or the page text would serve a
@@ -942,7 +1126,7 @@ ctx_size = 8192                        # -c
 mode = "sequential"                    # "sequential" | "concurrent"
 
 [ocr]
-backend = "deepseek-ocr"               # registry key
+backend = "deepseek-ocr"               # deepseek-ocr | paddleocr-vl | glm-ocr
 model = "/models/deepseek-ocr-f16.gguf"
 mmproj = "/models/mmproj-deepseek-ocr-f16.gguf"
 resolution = "large"                   # tiny | small | base | large | gundam
@@ -958,6 +1142,7 @@ endpoint = ""
 
 [figure]
 enabled = true                         # false = don't detect/describe figures
+detect = "auto"                        # auto | grounding | pdf-embedded | none (§8.4)
 mode = "describe-only"                 # describe-only (paper2llm default) |
                                        #   describe-and-keep | placeholder
 crop_padding = 0.02                    # fraction of page dims
@@ -988,40 +1173,52 @@ append_to_document = false             # also inject (prepend, fenced) into doc
 offline = false                        # hard-disable all network use
 ```
 
-### 13.2 CLI surface (`cli.py`, argparse)
+### 13.2 CLI surface (`cli.py`, argparse subparsers)
+
+Three subcommands (§3.1). `run` is the default — bare `inscriber INPUT` ≡
+`inscriber run INPUT`. Flags below are grouped by the stage they affect; each
+subcommand accepts only the groups relevant to it.
 
 ```
-inscriber INPUT [options]
+inscriber run     INPUT [options]     # end-to-end (default)
+inscriber ocr     INPUT [ocr-options] # OCR + crop → write OCR bundle, stop
+inscriber describe BUNDLE [vlm-options]# OCR bundle → VLM + assemble + write
 
-  INPUT                         PDF file path or http(s) URL
-
+  # --- common ---
+  INPUT                         PDF file path or http(s) URL   (run, ocr)
+  BUNDLE                        path to a *.inscriber-ocr dir   (describe)
   -c, --config PATH             config file (default: platform config dir)
   -o, --output-dir DIR          output directory (default: cwd)
-      --pages RANGE             1-indexed inclusive, e.g. "1-10", "3", "5-", "all"
+      --pages RANGE             1-indexed inclusive, e.g. "1-10","3","5-","all" (run, ocr)
 
-  # model / llama overrides
+  # --- OCR stage (run, ocr) ---
       --llama-bin-dir DIR
       --host HOST               llama-server bind host (default 127.0.0.1)
       --port N                  fixed port (default 0 = auto)
-      --ocr-backend NAME        e.g. deepseek-ocr
+      --ocr-backend NAME        deepseek-ocr | paddleocr-vl | glm-ocr
       --ocr-model PATH
       --ocr-mmproj PATH
       --ocr-resolution MODE     tiny|small|base|large|gundam
       --ocr-ngl N               GPU layers for the OCR server
       --ocr-endpoint URL        use running server; don't spawn
+      --figure-detect MODE      auto|grounding|pdf-embedded|none (§8.4)
+      --no-figures              disable figure detection/description
+      --crop-padding FRAC       figure crop margin (fraction of page dims)
+
+  # --- VLM / describe stage (run, describe) ---
       --vlm-backend NAME
       --vlm-model PATH
       --vlm-mmproj PATH
       --vlm-ngl N               GPU layers for the VLM server
       --vlm-endpoint URL
-      --ctx N                   context size
-      --mode {sequential,concurrent}
-
-  # pipeline behavior
       --figure-mode {describe-only,describe-and-keep,placeholder}
-      --no-figures              disable figure detection/description (figure.enabled=false)
-      --crop-padding FRAC       figure crop margin (fraction of page dims)
       --context-chars N         whole-page context truncation cap
+
+  # --- shared inference (run, ocr, describe) ---
+      --ctx N                   context size
+      --mode {sequential,concurrent}   (run only)
+
+  # --- output / assembly (run, describe) ---
       --no-split                write only the full document
       --page-numbers            insert "#### Page N" before each page
       --page-separators         insert "---" between pages
@@ -1060,6 +1257,7 @@ inscriber INPUT [options]
 | `vlm.*` | `--vlm-backend` / `--vlm-model` / `--vlm-mmproj` / `--vlm-ngl` / `--vlm-endpoint` |
 | `inference.mode` | `--mode` |
 | `figure.enabled` | `--no-figures` (sets false) |
+| `figure.detect` | `--figure-detect` |
 | `figure.mode` | `--figure-mode` |
 | `figure.crop_padding` / `figure.context_chars` | `--crop-padding` / `--context-chars` |
 | `output.dir` | `-o/--output-dir` |
@@ -1173,9 +1371,16 @@ These are hard requirements, not nice-to-haves:
 The real models need a GPU/large RAM and aren't available in CI, so tests mock
 the inference layer at the **chat-client boundary**.
 
-- **`test_deepseek_parser.py`** — golden-string tests for the grounding parser
-  (§8.3) using **recorded real outputs** committed as fixtures. This is the
-  highest-value test; the single-pass design hinges on the parser being exact.
+- **`test_ocr_parsers.py`** — golden-string tests for each backend's parser
+  (§8.3) using **recorded real outputs** as fixtures: DeepSeek grounding
+  (tokens + padding-corrected bboxes), PaddleOCR-VL (markdown / JSON), GLM-OCR
+  (text). Highest-value test; the single-pass grounding design hinges on exact
+  parsing.
+- **`test_bundle_roundtrip.py`** — `ocr` writes a bundle; `describe` loads it and
+  produces the same final output as `run`; a hand-edited page markdown survives;
+  a stale/incompatible `inscriber_version` is rejected (§8.5).
+- **`test_pdf_embedded_figures.py`** — `figure.detect = pdf-embedded` on a fixture
+  PDF with an embedded raster figure yields a crop + appended placeholder (§8.4).
 - **`test_splitter.py`** — section-detection on a battery of synthetic markdown
   docs (with/without appendix, backmatter, the `A ` edge case, page markers).
 - **`test_stitch.py`** — header/footer stripping & de-hyphenation on crafted
@@ -1231,7 +1436,7 @@ llama.cpp over HTTP.
 - **Resolution** is the main speed/quality lever: `large` (default) is a good
   balance; `gundam` (model-side tiling) is best for dense two-column papers but
   noticeably slower; `base`/`small`/`tiny` are the speed escape hatches.
-- **Caching** (§8.5/§9.6) makes iteration cheap — changing split/figure/bibtex
+- **Caching** (§8.6/§9.6) makes iteration cheap — changing split/figure/bibtex
   options re-runs in seconds because OCR and VLM results are reused.
 - **GPU offload** via `-ngl` is the biggest wall-clock win when available; left
   to the user's hardware/build.
@@ -1266,15 +1471,19 @@ llama.cpp over HTTP.
 3. **M1b — OCR vertical slice.** `DeepSeekOcrBackend.ocr_page` with the parser +
    padding-correction **locked to the M1a fixtures**, the OCR cache, and
    per-page markdown (with `⟦INSCRIBER_FIG⟧` placeholders) for a real PDF.
-4. **M2 — Figures.** Grounding-bbox cropping (§8.4), VLM server +
-   `GemmaVlmBackend`, figure-description prompt + extraction, whole-page context,
-   blockquote injection at placeholders (§10.2). VLM cache.
+4. **M2 — Figures + two-step split.** Figure detection (§8.4: grounding for
+   DeepSeek), cropping, VLM server + `GemmaVlmBackend`, prompt + extraction,
+   whole-page context, blockquote injection (§10.2), VLM cache. **Land the
+   `ocr`/`describe` subcommands and OCR-bundle read/write here** (§3.1, §8.5) —
+   it falls out naturally once the OCR↔VLM boundary is serialized, and it's the
+   workflow that makes VLM comparison cheap.
 5. **M3 — Assembly & splitting.** Stitching, the ported light post-processing +
    new cleanup (§10.3), splitter with standalone-file headers (§11), output
    writer (full + splits + figures/).
-6. **M4 — Inputs & BibTeX.** URL input + the 7 domain configs (§6), `--offline`,
-   optional Semantic Scholar BibTeX with title validation, mock fallback, and
-   prepend/fenced injection (§12).
+6. **M4 — More OCR backends + inputs + BibTeX.** `PaddleOcrVlBackend` and
+   `GlmOcrBackend` (§8.3) with the `pdf-embedded` figure fallback (§8.4); URL
+   input + the 7 domain configs (§6); `--offline`; Semantic Scholar BibTeX with
+   title validation, mock fallback, prepend/fenced injection (§12).
 7. **M5 — Hardening.** Cross-platform CI matrix, mocked end-to-end tests,
    `concurrent` mode, docs/README, packaging to PyPI.
 
@@ -1282,8 +1491,13 @@ llama.cpp over HTTP.
 
 ## 22. Open questions / future work
 
-- **Second OCR adapter** (Dots.OCR or PaddleOCR-VL) to validate the abstraction
-  early — its grounding/layout format differs and will exercise the interface.
+- **External layout detector** for the non-grounding backends — wire
+  PP-DocLayout / PP-DocLayoutV3 (PaddlePaddle) as an optional figure-detection
+  source so PaddleOCR-VL / GLM-OCR can flip `supports_grounding = True` and crop
+  real figure regions instead of relying on the `pdf-embedded` fallback (§8.4).
+  Adds a heavy optional dependency — keep it opt-in.
+- **More grounding-capable OCR backends** — Dots.OCR (#17575, JSON layout *with*
+  boxes) and HunyuanOCR (#21395); Dots.OCR is the natural next grounding backend.
 - **Table reconstruction across page breaks** (§10.3) — currently a documented
   limitation.
 - **Equation fidelity** — verify DeepSeek-OCR's LaTeX/math output quality on real
