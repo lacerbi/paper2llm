@@ -20,6 +20,9 @@ import {
   Grid,
   SelectChangeEvent,
   Tooltip,
+  Alert,
+  AlertTitle,
+  Link,
 } from "@mui/material";
 import InfoIcon from "@mui/icons-material/Info";
 import StarIcon from "@mui/icons-material/Star";
@@ -65,6 +68,9 @@ const App: React.FC = () => {
   );
   const [conversionResult, setConversionResult] =
     useState<PdfToMdResult | null>(null);
+  // Not persisted on purpose: the notice reappears on every visit
+  const [showDiscontinuedNotice, setShowDiscontinuedNotice] =
+    useState<boolean>(true);
   // Special constant for the "None" option
   const NONE_OPTION_ID = "none";
   const NONE_OPTION: VisionModelInfo = {
@@ -338,6 +344,29 @@ const App: React.FC = () => {
         }}
       >
         <Container maxWidth="md">
+          {showDiscontinuedNotice && (
+            <Alert
+              severity="info"
+              onClose={() => setShowDiscontinuedNotice(false)}
+              sx={{ mb: 3 }}
+            >
+              <AlertTitle>
+                paper2llm is no longer actively developed
+              </AlertTitle>
+              It has been superseded by{" "}
+              <Link
+                href="https://github.com/lacerbi/inscriber"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                inscriber
+              </Link>
+              , an open-source command-line tool that converts academic PDFs
+              into LLM-friendly Markdown <strong>entirely locally</strong> on
+              your machine — no API keys, no cloud. The web app remains
+              functional, but it will not receive further updates.
+            </Alert>
+          )}
           <Paper sx={{ p: { xs: 2, md: 4 }, mb: 4 }}>
             <Box mb={4}>
               <ApiKeyManager
@@ -519,7 +548,7 @@ const App: React.FC = () => {
         }}
       >
         <Typography variant="body2" sx={{ mb: 1 }}>
-          © 2025 paper2llm v{packageInfo.version} (updated {packageInfo.lastUpdated}) - MIT License |{" "}
+          © 2025–2026 paper2llm v{packageInfo.version} (updated {packageInfo.lastUpdated}) - MIT License |{" "}
           <a
             href="https://github.com/lacerbi/paper2llm"
             target="_blank"

@@ -1,5 +1,13 @@
 # `paper2llm` 📄→✨
 
+> [!IMPORTANT]
+> **`paper2llm` is no longer actively developed.** It has been superseded by
+> [`inscriber`](https://github.com/lacerbi/inscriber), an open-source Python
+> command-line tool that converts academic PDFs into LLM-friendly Markdown
+> **entirely locally** on your machine — no API keys, no cloud, your documents
+> never leave your computer. The `paper2llm` web app remains online and
+> functional, but it will not receive further updates.
+
 Convert PDFs with a focus on academic papers into human-and-LLM-friendly **text-only Markdown files**.
 
 ### Features
